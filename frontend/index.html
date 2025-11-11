@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JWT Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="script.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div class="animated-bg"></div>
+  <div class="grid-pattern"></div>
+
+  <div class="main-container">
+    <!-- HEADER -->
+    <header class="header">
+      <h1 class="logo">JWT ANALYZER</h1>
+      <p class="subtitle">Decode • Encode • Analyze • Verify</p>
+    </header>
+
+    <!-- TABS NAVEGACIÓN -->
+    <nav class="tabs-container">
+      <button class="tab-btn active" onclick="showTab('decoder', event)">
+        <i data-lucide="unlock" class="w-5 h-5"></i>
+        <span>Decoder</span>
+      </button>
+      <button class="tab-btn" onclick="showTab('encoder', event)">
+        <i data-lucide="lock" class="w-5 h-5"></i>
+        <span>Encoder</span>
+      </button>
+      <button class="tab-btn" onclick="showTab('analysis', event)">
+        <i data-lucide="microscope" class="w-5 h-5"></i>
+        <span>Analysis</span>
+      </button>
+      <button class="tab-btn" onclick="showTab('history', event)">
+        <i data-lucide="clock" class="w-5 h-5"></i>
+        <span>History</span>
+        <span id="historyBadge" class="tab-badge">0</span>
+      </button>
+    </nav>
+
+    <!-- CONTENIDO -->
+    <div style="padding: 0 1rem 4rem;">
+      
+      <!-- DECODER -->
+      <section id="decoder" class="section active">
+        <div class="card">
+          <h2 class="card-title">
+            <i data-lucide="unlock" class="w-8 h-8"></i>
+            Token Decoder
+          </h2>
+          <p class="card-description">Paste your JWT token below to decode and analyze its contents</p>
+          
+          <div class="input-group">
+            <label class="input-label">JWT Token</label>
+            <textarea id="tokenInput" class="textarea-field" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"></textarea>
+          </div>
+
+          <button class="btn-primary" onclick="decodeToken()">
+            <i data-lucide="zap" class="w-5 h-5"></i>
+            <span>Decode Token</span>
+          </button>
+
+          <div class="result-title">
+            <i data-lucide="terminal" class="w-4 h-4"></i>
+            Output
+          </div>
+          <pre id="decodeResult" class="result-box">Waiting for token...</pre>
+
+          <button id="viewAnalysisBtn" class="btn-secondary hidden" onclick="goToAnalysis()">
+            <i data-lucide="microscope" class="w-5 h-5"></i>
+            <span>View Complete Analysis</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ENCODER -->
+      <section id="encoder" class="section">
+        <div class="card">
+          <h2 class="card-title">
+            <i data-lucide="lock" class="w-8 h-8"></i>
+            Token Encoder
+          </h2>
+          <p class="card-description">Create a new JWT token with custom header, payload and secret</p>
+          
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            <div class="input-group">
+              <label class="input-label">Header</label>
+              <textarea id="headerInput" class="textarea-field" placeholder='{"alg": "HS256", "typ": "JWT"}'>
+{
+    "alg": "HS256", 
+    "typ": "JWT"
+}
+              </textarea>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Payload</label>
+              <textarea id="payloadInput" class="textarea-field" placeholder='{"sub": "user123", "name": "John Doe", "role": "admin"}'>
+{
+    "sub": "1007142936",
+    "name": "Jazmin",
+    "admin": false,
+    "iat": 1516239022,
+    "exp": 250000
+}
+              </textarea>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+            <div class="input-group">
+              <label class="input-label">Secret Key</label>
+              <input id="secretInput" type="password" class="input-field" placeholder="your-256-bit-secret">
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Algorithm</label>
+              <select id="algorithmInput" class="select-field">
+                <option value="HS256">HS256</option>
+                <option value="HS384">HS384</option>
+                <option value="HS512">HS512</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn-primary" onclick="encodeToken()">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+            <span>Generate Token</span>
+          </button>
+
+          <div class="result-title">
+            <i data-lucide="terminal" class="w-4 h-4"></i>
+            Generated Token
+          </div>
+          <pre id="encodeResult" class="result-box">Waiting for generation...</pre>
+          <button id="copyTokenBtn" class="btn-secondary hidden" onclick="copyToken()">
+            <i data-lucide="copy" class="w-5 h-5"></i>
+            <span>Copy Token</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ANALYSIS -->
+      <section id="analysis" class="section">
+        <div class="card">
+          <h2 class="card-title">
+            <i data-lucide="microscope" class="w-8 h-8"></i>
+            Advanced Token Analysis
+          </h2>
+          <p class="card-description">Perform comprehensive lexical, syntactic, semantic and pumping lemma analysis</p>
+          
+          <div class="input-group">
+            <label class="input-label">JWT Token to Analyze</label>
+            <textarea id="analysisTokenInput" class="textarea-field" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></textarea>
+          </div>
+
+          <button class="btn-primary" onclick="performAnalysis()">
+            <i data-lucide="scan" class="w-5 h-5"></i>
+            <span>Run Complete Analysis</span>
+          </button>
+          <button class="btn-secondary" onclick="verifySignature()">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+            <span>Verify Signature Only</span>
+          </button>
+
+          <!-- Análisis Léxico -->
+          <div class="analysis-section">
+            <div class="result-title">
+              <i data-lucide="list" class="w-4 h-4"></i>
+              Lexical Analysis
+            </div>
+            <pre id="lexicalResult" class="result-box">Waiting for analysis...</pre>
+          </div>
+
+          <!-- Análisis Sintáctico -->
+          <div class="analysis-section">
+            <div class="result-title">
+              <i data-lucide="git-branch" class="w-4 h-4"></i>
+              Syntactic Analysis
+            </div>
+            <pre id="syntacticResult" class="result-box">Waiting for analysis...</pre>
+          </div>
+
+          <!-- Análisis Semántico -->
+          <div class="analysis-section">
+            <div class="result-title">
+              <i data-lucide="brain" class="w-4 h-4"></i>
+              Semantic Analysis
+            </div>
+            <pre id="semanticResult" class="result-box">Waiting for analysis...</pre>
+          </div>
+
+          <!-- Lema de Bombeo -->
+          <div class="analysis-section">
+            <div class="result-title">
+              <i data-lucide="repeat" class="w-4 h-4"></i>
+              Pumping Lemma Verification
+            </div>
+            <pre id="pumpingResult" class="result-box">Waiting for analysis...</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="history" class="section">
+        <div class="card">
+          <div class="history-header">
+            <div>
+              <h2 class="card-title" style="margin-bottom: 0.5rem;">
+                <i data-lucide="clock" class="w-8 h-8"></i>
+                Operation History
+              </h2>
+              <p class="card-description" style="margin-bottom: 0;">Track all your JWT operations</p>
+            </div>
+            <button class="btn-danger" onclick="clearHistory()">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+              <span>Clear All</span>
+            </button>
+          </div>
+
+          <div id="historyList" class="history-list">
+            <div class="empty-state">
+              <i data-lucide="inbox" class="empty-state-icon"></i>
+              <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">No operations yet</p>
+              <p style="font-size: 0.9rem;">Start by decoding or encoding a JWT token</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</body>
+</html>
