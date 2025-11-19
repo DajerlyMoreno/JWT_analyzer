@@ -44,6 +44,11 @@ const API_URL = "http://localhost:3000";
     }
 
     function addToHistory(type, data) {
+      // ⚠️ Solo queremos guardar ENCODE y DECODE en el historial
+      if (type !== 'encode' && type !== 'decode') {
+        return;
+      }
+    
       const now = new Date();
       history.unshift({
         type,
@@ -60,6 +65,7 @@ const API_URL = "http://localhost:3000";
       updateHistory();
       document.getElementById('historyBadge').textContent = history.length;
     }
+    
 
     function updateHistory() {
       const list = document.getElementById('historyList');
@@ -75,22 +81,63 @@ const API_URL = "http://localhost:3000";
         lucide.createIcons();
         return;
       }
-
-      list.innerHTML = history.map(item => `
-        <div class="history-item">
-          <div class="history-item-header">
-            <div class="history-type">
-              <i data-lucide="${getHistoryIcon(item.type)}" class="w-5 h-5"></i>
-              <span>${item.type.toUpperCase()}</span>
+    
+      list.innerHTML = history.map((item, index) => {
+        const tokenText   = getHistoryField(item, 'token')   || '—';
+        const headerText  = getHistoryField(item, 'header')  || '—';
+        const payloadText = getHistoryField(item, 'payload') || '—';
+    
+        return `
+          <div class="history-item">
+            <div class="history-item-header">
+              <div class="history-type">
+                <i data-lucide="${getHistoryIcon(item.type)}" class="w-5 h-5"></i>
+                <span>${item.type.toUpperCase()}</span>
+              </div>
+              <span class="history-time">${item.timestamp}</span>
             </div>
-            <span class="history-time">${item.timestamp}</span>
+    
+            <div class="history-grid">
+              <!-- TOKEN -->
+              <div class="history-mini-card">
+                <div class="history-mini-header">
+                  <span>Token</span>
+                  <button class="mini-copy-btn" onclick="copyHistoryPart(${index}, 'token')">
+                    <i data-lucide="copy" class="w-4 h-4"></i>
+                  </button>
+                </div>
+                <pre class="history-mini-body">${escapeHtml(tokenText)}</pre>
+              </div>
+    
+              <!-- HEADER -->
+              <div class="history-mini-card">
+                <div class="history-mini-header">
+                  <span>Header</span>
+                  <button class="mini-copy-btn" onclick="copyHistoryPart(${index}, 'header')">
+                    <i data-lucide="copy" class="w-4 h-4"></i>
+                  </button>
+                </div>
+                <pre class="history-mini-body">${escapeHtml(headerText)}</pre>
+              </div>
+    
+              <!-- PAYLOAD -->
+              <div class="history-mini-card">
+                <div class="history-mini-header">
+                  <span>Payload</span>
+                  <button class="mini-copy-btn" onclick="copyHistoryPart(${index}, 'payload')">
+                    <i data-lucide="copy" class="w-4 h-4"></i>
+                  </button>
+                </div>
+                <pre class="history-mini-body">${escapeHtml(payloadText)}</pre>
+              </div>
+            </div>
           </div>
-          <div class="history-content">${JSON.stringify(item.data, null, 2)}</div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
       
       lucide.createIcons();
     }
+    
 
     function getHistoryIcon(type) {
       const icons = {
@@ -101,11 +148,32 @@ const API_URL = "http://localhost:3000";
       return icons[type] || 'file';
     }
 
-    function clearHistory() {
-      if (confirm('⚠️ This will delete all operation history. Continue?')) {
+    async function clearHistory() {
+      if (!confirm('⚠️ This will delete all operation history. Continue?')) {
+        return;
+      }
+    
+      try {
+        // 👇 BORRAR EN LA BASE
+        const res = await fetch(`${API_URL}/api/history`, {
+          method: 'DELETE'
+        });
+    
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+    
+        const data = await res.json();
+        console.log("Servidor respondió:", data);
+    
+        // 👇 BORRAR EN MEMORIA / UI
         history = [];
         updateHistory();
         document.getElementById('historyBadge').textContent = '0';
+      } catch (err) {
+        console.error('Error al borrar historial en el servidor:', err);
+        alert('❌ No se pudo borrar el historial en el servidor: ' + err.message);
       }
     }
 
@@ -330,7 +398,14 @@ const API_URL = "http://localhost:3000";
     
         history = data.map(item => ({
           type: item.type,
-          data: item.responseData,
+          // 👇 Aquí armamos un objeto "data" uniforme leyendo LOS CAMPOS RAÍZ
+          data: {
+            token: item.token || item.responseData?.token,
+            header: item.header || item.responseData?.header,
+            payload: item.payload || item.responseData?.payload,
+            secret: item.secret,                        // si lo guardas
+            algorithm: item.algorithm || item.responseData?.algorithm
+          },
           timestamp: new Date(item.createdAt).toLocaleString('es-CO')
         }));
     
@@ -340,6 +415,93 @@ const API_URL = "http://localhost:3000";
         console.error('Error al cargar historial:', err);
       }
     }
+    
+
+    function getHistoryField(item, field) {
+      if (!item || !item.data) return '';
+    
+      // Normalizar posibles estructuras
+      const data = item.data;
+    
+      if (field === 'token') {
+        return (
+          data.token ||
+          data.jwt ||
+          data.inputToken ||
+          data.originalToken ||
+          data.decodedToken ||
+          ''
+        );
+      }
+    
+      if (field === 'header') {
+        const headerObj =
+          data.header ||
+          data.decodedHeader ||
+          (data.decoded && data.decoded.header) ||
+          (data.analysis && data.analysis.header) ||
+          null;
+    
+        if (!headerObj) return '';
+        try {
+          return typeof headerObj === 'string'
+            ? headerObj
+            : JSON.stringify(headerObj, null, 2);
+        } catch {
+          return String(headerObj);
+        }
+      }
+    
+      if (field === 'payload') {
+        const payloadObj =
+          data.payload ||
+          data.decodedPayload ||
+          (data.decoded && data.decoded.payload) ||
+          (data.analysis && data.analysis.payload) ||
+          null;
+    
+        if (!payloadObj) return '';
+        try {
+          return typeof payloadObj === 'string'
+            ? payloadObj
+            : JSON.stringify(payloadObj, null, 2);
+        } catch {
+          return String(payloadObj);
+        }
+      }
+    
+      return '';
+    }
+    
+    function copyHistoryPart(index, field) {
+      const item = history[index];
+      const text = getHistoryField(item, field);
+    
+      if (!text) {
+        alert('⚠️ No hay datos para copiar en ' + field);
+        return;
+      }
+    
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          // Opcional: puedes mostrar un pequeño mensaje o toast
+          console.log(`✅ Copiado ${field} desde historial`);
+        })
+        .catch(() => {
+          alert('❌ No se pudo copiar al portapapeles');
+        });
+    }
+    
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+    
     
     // Llama automáticamente al cargar la página
     window.addEventListener('DOMContentLoaded', loadHistoryFromServer);

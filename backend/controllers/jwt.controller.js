@@ -18,19 +18,29 @@ export const analyzeToken = async (req, res) => {
     const parsed = parseJwt(token);
 
     const response = {
+      token,
       header: parsed.header,
       payload: parsed.payload,
       parts: parsed.parts
     };
 
-    await History.create({ type: "decode", requestData: { token }, responseData: response });
+    // ✅ Guardamos SOLO decode, con campos clave
+    await History.create({
+      type: "decode",
+      token,
+      header: parsed.header,
+      payload: parsed.payload,
+      secret: null,
+      algorithm: parsed.header?.alg || null
+    });
+
     res.json(response);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
 
-/** ========== ANÁLISIS COMPLETO ========== */
+/** ========== ANÁLISIS COMPLETO (NO SE GUARDA EN BD) ========== */
 export const fullAnalysis = async (req, res) => {
   try {
     const { token, secret } = req.body;
@@ -49,11 +59,8 @@ export const fullAnalysis = async (req, res) => {
 
     const response = { lexical, syntactic, semantic, pumping };
 
-    await History.create({
-      type: "analysis",
-      requestData: { token, withSecret: Boolean(secret) },
-      responseData: response
-    });
+    // ❌ YA NO SE GUARDA EN MONGO
+    // Antes: History.create({ type: "analysis", ... })
 
     res.json(response);
   } catch (err) {
@@ -61,7 +68,6 @@ export const fullAnalysis = async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 };
-
 
 /** ========== CODIFICACIÓN ========== */
 export const encodeToken = async (req, res) => {
@@ -73,13 +79,16 @@ export const encodeToken = async (req, res) => {
     const signature = signHmac(headerB64, payloadB64, secret, algorithm);
     const token = `${headerB64}.${payloadB64}.${signature}`;
 
-    // Por seguridad NO guardamos el secret en responseData
     const response = { token, algorithm };
 
+    // ✅ Guardamos encode con todo lo que pediste
     await History.create({
       type: "encode",
-      requestData: { header, payload, algorithm, withSecret: Boolean(secret) },
-      responseData: response
+      token,
+      header,
+      payload,
+      secret,
+      algorithm
     });
 
     res.json(response);
@@ -88,7 +97,7 @@ export const encodeToken = async (req, res) => {
   }
 };
 
-/** ========== VERIFICACIÓN (firma) ========== */
+/** ========== VERIFICACIÓN (firma) – NO GUARDAR EN BD ========== */
 export const verifySignature = async (req, res) => {
   try {
     const { token, secret } = req.body;
@@ -99,7 +108,10 @@ export const verifySignature = async (req, res) => {
     const ok = verifyHmac(headerB64, payloadB64, signatureB64, secret, alg);
 
     const response = { algorithm: alg, signatureVerified: ok };
-    await History.create({ type: "analysis", requestData: { verify: true }, responseData: response });
+
+    // ❌ Antes se guardaba como type: "analysis"
+    // await History.create({ type: "analysis", ... });
+
     res.json(response);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -110,4 +122,22 @@ export const verifySignature = async (req, res) => {
 export const getHistory = async (req, res) => {
   const data = await History.find().sort({ createdAt: -1 });
   res.json(data);
+};
+
+/** ========== LIMPIAR HISTORIAL ========== */
+export const clearHistory = async (req, res) => {
+  try {
+    console.log("🗑️ DELETE /api/history llamado"); // <--- para verificar que entra aquí
+
+    const result = await History.deleteMany({});
+    console.log("🗑️ Documentos borrados:", result.deletedCount);
+
+    res.json({ 
+      message: "Historial eliminado por completo", 
+      deleted: result.deletedCount 
+    });
+  } catch (err) {
+    console.error("❌ Error al borrar historial:", err);
+    res.status(500).json({ error: err.message });
+  }
 };

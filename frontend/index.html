@@ -163,10 +163,6 @@
             <i data-lucide="scan" class="w-5 h-5"></i>
             <span>Run Complete Analysis</span>
           </button>
-          <button class="btn-secondary" onclick="verifySignature()">
-            <i data-lucide="shield-check" class="w-5 h-5"></i>
-            <span>Verify Signature Only</span>
-          </button>
 
           <!-- Análisis Léxico -->
           <div class="analysis-section">
@@ -206,7 +202,7 @@
         </div>
       </section>
 
-      <!-- HISTORY -->
+      <!-- HISTORY onclick="clearHistory()"  -->
       <section id="history" class="section">
         <div class="card">
           <div class="history-header">
@@ -217,12 +213,13 @@
               </h2>
               <p class="card-description" style="margin-bottom: 0;">Track all your JWT operations</p>
             </div>
-            <button class="btn-danger" onclick="clearHistory()">
+            
+            <button class="btn-danger" >
               <i data-lucide="trash-2" class="w-4 h-4"></i>
               <span>Clear All</span>
             </button>
           </div>
-
+          
           <div id="historyList" class="history-list">
             <div class="empty-state">
               <i data-lucide="inbox" class="empty-state-icon"></i>
