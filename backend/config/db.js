@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 
 export const connectDB = async () => {
   try {
-    const uri = process.env.MONGO_URI || "mongodb+srv://jazminmoreno01_db_user:t8rXlEDh6XaHauEJ@cluster.mongodb.net/JWT_FORMALES";
+    const uri = process.env.MONGO_URI || "mongodb+srv://admin:zwLBiGYbpc4CoHxo@restful.pahkzwt.mongodb.net";
+    //const uri = process.env.MONGO_URI || "mongodb+srv://jazminmoreno01_db_user:t8rXlEDh6XaHauEJ@cluster.mongodb.net/JWT_FORMALES";
     await mongoose.connect(uri, {
       useNewUrlParser: true,
       useUnifiedTopology: true
