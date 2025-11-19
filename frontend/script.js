@@ -502,6 +502,60 @@ const API_URL = "http://localhost:3000";
         .replace(/'/g, '&#039;');
     }
     
-    
+    function setStatusPill(el, mode, text) {
+      el.classList.remove('hidden', 'info', 'success', 'error');
+      el.classList.add(mode); // 'info' | 'success' | 'error'
+      el.textContent = text;
+    }
+
+    async function verifyDecodeSignature() {
+      const token = document.getElementById('tokenInput').value.trim();
+      const secret = document.getElementById('decodeSecretInput').value.trim();
+      const statusEl = document.getElementById('decodeSecretStatus');
+
+      if (!token) {
+        alert('⚠️ Ingresa primero un token JWT para verificar la firma.');
+        return;
+      }
+
+      if (!secret) {
+        alert('⚠️ Ingresa un secret para verificar la firma.');
+        return;
+      }
+
+      const minLength = 32;
+      if (secret.length < minLength) {
+        alert(`⚠️ La clave secreta debe tener al menos ${minLength} caracteres (≈256 bits).`);
+        return;
+      }
+
+      setStatusPill(statusEl, 'info', 'Checking signature...');
+
+      try {
+        const res = await fetch(`${API_URL}/api/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, secret })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setStatusPill(statusEl, 'error', data.error || 'Verification failed');
+          return;
+        }
+
+        if (data.signatureVerified) {
+          setStatusPill(statusEl, 'success', 'Valid secret – signature matches ✅');
+        } else {
+          setStatusPill(statusEl, 'error', 'Invalid secret – signature does NOT match ❌');
+        }
+
+        addToHistory('analysis', { verifyFromDecoder: true, ...data });
+      } catch (e) {
+        setStatusPill(statusEl, 'error', `Error: ${e.message}`);
+      }
+    }
+      
     // Llama automáticamente al cargar la página
     window.addEventListener('DOMContentLoaded', loadHistoryFromServer);

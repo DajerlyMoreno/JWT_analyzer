@@ -46,21 +46,28 @@
     <!-- CONTENIDO -->
     <div style="padding: 0 1rem 4rem;">
       
-      <!-- DECODER -->
+      <!-- DECODER --> 
       <section id="decoder" class="section active">
         <div class="card">
           <h2 class="card-title">
             <i data-lucide="unlock" class="w-8 h-8"></i>
             Token Decoder
           </h2>
-          <p class="card-description">Paste your JWT token below to decode and analyze its contents</p>
+          <p class="card-description">
+            Paste your JWT token below to decode and analyze its contents
+          </p>
           
           <div class="input-group">
             <label class="input-label">JWT Token</label>
-            <textarea id="tokenInput" class="textarea-field" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"></textarea>
+            <textarea
+              id="tokenInput"
+              class="textarea-field"
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            ></textarea>
           </div>
 
-          <button class="btn-primary" onclick="decodeToken()">
+          <!-- Botón principal del decoder (le pongo id para el estado de error) -->
+          <button id="decodeBtn" class="btn-primary" onclick="decodeToken()">
             <i data-lucide="zap" class="w-5 h-5"></i>
             <span>Decode Token</span>
           </button>
@@ -75,6 +82,40 @@
             <i data-lucide="microscope" class="w-5 h-5"></i>
             <span>View Complete Analysis</span>
           </button>
+
+          <!-- 🔐 Verificación opcional de firma en el DECODER, adaptado a tu estilo -->
+          <div class="input-group mt-4">
+            <label class="input-label">
+              JWT Signature Verification
+              <span class="input-label-note">(optional)</span>
+            </label>
+
+            <p class="helper-text">
+              Enter the secret used to sign this JWT. The app will verify the signature locally.
+            </p>
+
+            <input
+              id="decodeSecretInput"
+              type="password"
+              class="textarea-field" 
+            />
+
+            <div class="decode-secret-actions">
+              <button
+                type="button"
+                class="btn-secondary btn-secondary-small"
+                onclick="verifyDecodeSignature()"
+              >
+                Verify signature
+              </button>
+
+              <span
+                id="decodeSecretStatus"
+                class="status-pill hidden"
+              ></span>
+            </div>
+          </div>
+
         </div>
       </section>
 
