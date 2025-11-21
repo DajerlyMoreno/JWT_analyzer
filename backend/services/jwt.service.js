@@ -20,12 +20,14 @@ export function base64UrlDecode(str) {
 }
 
 const RX_B64URL = /^[A-Za-z0-9\-_]+$/;
-export function validateBase64UrlPart(part) {
-  return RX_B64URL.test(part) && part.length > 0;
-}
 
 function safeJsonParse(str) {
   try { return JSON.parse(str); } catch { return null; }
+}
+
+export function validateBase64UrlPart(part) {
+  if (typeof part !== "string" || part.length === 0) return false;
+  return RX_B64URL.test(part);
 }
 
 /** ======================
@@ -33,14 +35,13 @@ function safeJsonParse(str) {
  *  ====================== */
 export function parseJwt(token) {
   const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("El token debe tener exactamente 3 partes separadas por '.'");
 
   const [headerB64, payloadB64, signatureB64] = parts;
 
   // Validación léxica por parte (alfabeto Base64URL)
-  if (!validateBase64UrlPart(headerB64)) throw new Error("HEADER no es Base64URL válido");
-  if (!validateBase64UrlPart(payloadB64)) throw new Error("PAYLOAD no es Base64URL válido");
-  if (!validateBase64UrlPart(signatureB64)) throw new Error("SIGNATURE no es Base64URL válido");
+  //if (!validateBase64UrlPart(headerB64)) throw new Error("HEADER no es Base64URL válido");
+  //if (!validateBase64UrlPart(payloadB64)) throw new Error("PAYLOAD no es Base64URL válido");
+  //if (!validateBase64UrlPart(signatureB64)) throw new Error("SIGNATURE no es Base64URL válido");
 
   // Decodificación + JSON
   const headerStr = base64UrlDecode(headerB64).toString("utf8");
@@ -49,8 +50,8 @@ export function parseJwt(token) {
   const header = safeJsonParse(headerStr);
   const payload = safeJsonParse(payloadStr);
 
-  if (!header) throw new Error("HEADER no es JSON válido");
-  if (!payload) throw new Error("PAYLOAD no es JSON válido");
+  //if (!header) throw new Error("HEADER no es JSON válido");
+  //if (!payload) throw new Error("PAYLOAD no es JSON válido");
 
   return { header, payload, signatureB64, parts: { headerB64, payloadB64, signatureB64 }, raw: { headerStr, payloadStr } };
 }
@@ -81,67 +82,172 @@ export function verifyHmac(headerB64, payloadB64, signatureB64, secret, algorith
  *  Análisis Léxico
  *  ====================== */
 export function lexicalAnalysis(token) {
-  const tokens = [];
-  let currentLexeme = "";
-  let part = 0;
-  for (let c of token) {
-    if (c === ".") {
-      tokens.push({ type: part === 0 ? "HEADER" : "PAYLOAD", value: currentLexeme, validB64Url: validateBase64UrlPart(currentLexeme) });
-      currentLexeme = "";
-      part++;
-    } else {
-      // base64url o punto
-      const isAllowed = /[A-Za-z0-9\-_]/.test(c);
-      if (!isAllowed) {
-        tokens.push({ type: "ERROR", value: c, message: "Carácter fuera del alfabeto Base64URL" });
-      }
-      currentLexeme += c;
-    }
-  }
-  if (currentLexeme) tokens.push({ type: "SIGNATURE", value: currentLexeme, validB64Url: validateBase64UrlPart(currentLexeme) });
+  const parts = token.split(".");     // Divide por puntos (incluye vacíos al inicio/fin)
+  const table= [];
+  let idx = 1;
 
-  return {
-    tokens,
-    automaton: jwtAutomaton,
-    summary: {
-      dots: (token.match(/\./g) || []).length,
-      parts: tokens.filter(t => ["HEADER", "PAYLOAD", "SIGNATURE"].includes(t.type)).length,
-    }
+  const push = (lexeme, tokenType, estado) => {
+    table.push({
+      index: idx++,
+      lexeme,
+      token: tokenType,
+      estado
+    });
   };
+
+  // Recorremos TODOS los "bloques" separados por '.'
+  parts.forEach((part, i) => {
+
+    // --- SEGMENTO ---
+    if (part && part !== "") {
+      // Hay contenido, validamos Base64URL
+      if (!validateBase64UrlPart(part)) {
+        push(part, "SEGMENT", "❌ ERROR");
+      } else {
+        push(part, "SEGMENT", "🟢 Válido");
+      }
+    } else {
+      // Bloque vacío → error léxico de segmento vacío
+      push("(vacío)", "SEGMENT", "❌ ERROR");
+    }
+
+    // --- DOT (el punto que separa este bloque del siguiente) ---
+    if (i < parts.length - 1) {
+      // Siempre que haya otro bloque después, hubo un punto aquí
+      push(".", "DOT", "🟢 Válido");
+    }
+  });
+
+  // --- EOF ---
+  push("EOF", "EOF", "—");
+
+  return { table };
 }
 
 /** ======================
  *  Análisis Sintáctico (verificador CFG)
  *  ====================== */
+// services/jwt.service.js
+
 export function syntacticAnalysis(parsed) {
-  // Gramática informal/didáctica
   const grammar = `
-S -> J
-J -> H "." P "." Sg
-H -> Base64url(JSON)
-P -> Base64url(JSON)
+S  -> J
+J  -> H "." P "." Sg
+H  -> Base64url(JSON)
+P  -> Base64url(JSON)
 Sg -> Base64url(firma)
   `.trim();
 
-  // Verificación estructural (descendente simple)
-  const isValid =
-    typeof parsed?.parts?.headerB64 === "string" &&
-    typeof parsed?.parts?.payloadB64 === "string" &&
-    typeof parsed?.parts?.signatureB64 === "string" &&
-    validateBase64UrlPart(parsed.parts.headerB64) &&
-    validateBase64UrlPart(parsed.parts.payloadB64) &&
-    validateBase64UrlPart(parsed.parts.signatureB64) &&
-    parsed.header && parsed.payload;
-
   const errors = [];
-  if (!validateBase64UrlPart(parsed.parts.headerB64)) errors.push("HEADER no cumple Base64URL");
-  if (!validateBase64UrlPart(parsed.parts.payloadB64)) errors.push("PAYLOAD no cumple Base64URL");
-  if (!validateBase64UrlPart(parsed.parts.signatureB64)) errors.push("SIGNATURE no cumple Base64URL");
-  if (!parsed.header) errors.push("HEADER no es JSON válido");
-  if (!parsed.payload) errors.push("PAYLOAD no es JSON válido");
 
-  return { grammar, isValid, errors };
+  // Si no hay parsed o partes, devolvemos error sintáctico general
+  if (!parsed || !parsed.parts) {
+    errors.push("Token incompleto o no se pudo parsear correctamente.");
+    return {
+      grammar,
+      isValid: false,
+      errors,
+      // añadimos campos vacíos para que el front no truene
+      derivation: [],
+      parseTree: null,
+      segments: null
+    };
+  }
+
+  const { headerB64, payloadB64, signatureB64 } = parsed.parts;
+
+  // ✅ Validaciones usando la validateBase64UrlPart "segura"
+  if (!validateBase64UrlPart(headerB64)) {
+    errors.push("HEADER no cumple Base64URL");
+  }
+  if (!validateBase64UrlPart(payloadB64)) {
+    errors.push("PAYLOAD no cumple Base64URL");
+  }
+  if (!validateBase64UrlPart(signatureB64)) {
+    errors.push("SIGNATURE no cumple Base64URL");
+  }
+  if (!parsed.header) {
+    errors.push("HEADER no es JSON válido");
+  }
+  if (!parsed.payload) {
+    errors.push("PAYLOAD no es JSON válido");
+  }
+
+  const isValid = errors.length === 0;
+
+  // 🧩 Derivación paso a paso (árbol en forma de “niveles”)
+  const derivation = [
+    "S",
+    "J",
+    'H "." P "." Sg',
+    'Base64url(JSON) "." Base64url(JSON) "." Base64url(firma)',
+    `${headerB64} "." ${payloadB64} "." ${signatureB64}`
+  ];
+
+  // 🧱 Árbol sencillo como estructura anidada (por si luego quieres dibujarlo bonito)
+  const parseTree = {
+    symbol: "S",
+    children: [
+      {
+        symbol: "J",
+        rule: "S -> J",
+        children: [
+          {
+            symbol: "H",
+            rule: 'J -> H "." P "." Sg',
+            children: [
+              {
+                symbol: "Base64url(JSON)",
+                value: headerB64
+              }
+            ]
+          },
+          { symbol: '"."', value: "." },
+          {
+            symbol: "P",
+            children: [
+              {
+                symbol: "Base64url(JSON)",
+                value: payloadB64
+              }
+            ]
+          },
+          { symbol: '"."', value: "." },
+          {
+            symbol: "Sg",
+            children: [
+              {
+                symbol: "Base64url(firma)",
+                value: signatureB64
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+
+  // 📦 Segmentos que quieres ver en el front
+  const segments = {
+    headerB64,
+    payloadB64,
+    signatureB64,
+    header: parsed.header || null,
+    payload: parsed.payload || null,
+    // la firma normalmente no se decodifica a JSON, así que enviamos tal cual
+    signatureRaw: signatureB64
+  };
+
+  return {
+    grammar,
+    isValid,
+    errors,
+    derivation,   // lista de pasos S ⇒ … ⇒ token
+    parseTree,    // árbol estructurado
+    segments      // header/payload decodificados + partes en Base64URL
+  };
 }
+
 
 /** ======================
  *  Utilidades semánticas

@@ -170,17 +170,26 @@
               <i data-lucide="list" class="w-4 h-4"></i>
               Lexical Analysis
             </div>
-            <pre id="lexicalResult" class="result-box">Waiting for analysis...</pre>
+          
+            <div id="lexicalResult" class="lexical-container">
+              Waiting for analysis...
+            </div>
           </div>
+               
 
           <!-- Análisis Sintáctico -->
-          <div class="analysis-section">
-            <div class="result-title">
-              <i data-lucide="git-branch" class="w-4 h-4"></i>
-              Syntactic Analysis
-            </div>
-            <pre id="syntacticResult" class="result-box">Waiting for analysis...</pre>
-          </div>
+<div class="analysis-section">
+  <div class="result-title">
+    <i data-lucide="braces" class="w-4 h-4"></i>
+    Syntactic Analysis
+  </div>
+
+  <!-- 👇 ESTE es el contenedor que tu JS necesita -->
+  <div id="syntacticResult" class="result-box">
+    Waiting for analysis...
+  </div>
+</div>
+
 
           <!-- Análisis Semántico -->
           <div class="analysis-section">

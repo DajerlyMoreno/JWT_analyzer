@@ -352,12 +352,6 @@ const API_URL = "http://localhost:3000";
         return;
       }
     
-      // Validación mínima antes de llamar al backend
-      if ((token.match(/\./g) || []).length !== 3 - 1) {
-        setAll('❌ Error: el token debe tener exactamente 3 partes separadas por "."');
-        return;
-      }
-    
       setAll('⏳ Analyzing...');
     
       try {
@@ -379,8 +373,8 @@ const API_URL = "http://localhost:3000";
     
         const data = await res.json();
     
-        document.getElementById('lexicalResult').textContent = JSON.stringify(data.lexical, null, 2);
-        document.getElementById('syntacticResult').textContent = JSON.stringify(data.syntactic, null, 2);
+        renderLexicalTable(data.lexical);
+        renderSyntacticPanel(data.syntactic);
         document.getElementById('semanticResult').textContent = JSON.stringify(data.semantic, null, 2);
         document.getElementById('pumpingResult').textContent = JSON.stringify(data.pumping, null, 2);
     
@@ -390,7 +384,128 @@ const API_URL = "http://localhost:3000";
       }
     }
     
-      
+    function renderLexicalTable(lexical) {
+      const container = document.getElementById('lexicalResult');
+    
+      if (!lexical || !Array.isArray(lexical.table) || lexical.table.length === 0) {
+        container.textContent = 'No lexical data';
+        return;
+      }
+    
+      const rowsHtml = lexical.table.map(row => `
+        <tr>
+          <td class="lexical-td index">${row.index}</td>
+          <td class="lexical-td lexeme">
+            <code>${escapeHtml(row.lexeme)}</code>
+          </td>
+          <td class="lexical-td token">
+            <span class="token-pill token-${row.token.toLowerCase()}">
+              ${row.token}
+            </span>
+          </td>
+          <td class="lexical-td estado">${row.estado}</td>
+        </tr>
+      `).join('');
+    
+      container.innerHTML = `
+        <table class="lexical-table">
+          <thead>
+            <tr>
+              <th class="lexical-th">#</th>
+              <th class="lexical-th">Lexema</th>
+              <th class="lexical-th">Token</th>
+              <th class="lexical-th">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderSyntacticPanel(syntactic) {
+      const container = document.getElementById('syntacticResult');
+    
+      if (!syntactic) {
+        container.textContent = 'No syntactic data';
+        return;
+      }
+    
+      const segments = syntactic.segments || {};
+      const headerJson = segments.header
+        ? escapeHtml(JSON.stringify(segments.header, null, 2))
+        : '—';
+      const payloadJson = segments.payload
+        ? escapeHtml(JSON.stringify(segments.payload, null, 2))
+        : '—';
+    
+      const sigRaw = segments.signatureRaw || segments.signatureB64 || '—';
+    
+      // Si el backend mandó "derivation", la usamos, si no la armamos rápido
+      let derivLines = syntactic.derivation && syntactic.derivation.length
+        ? syntactic.derivation
+        : [
+            'S',
+            'J',
+            'H "." P "." Sg',
+            'Base64url(JSON) "." Base64url(JSON) "." Base64url(firma)',
+            `${segments.headerB64 || '???'} "." ${segments.payloadB64 || '???'} "." ${segments.signatureB64 || '???'}`
+          ];
+    
+      const derivHtml = derivLines
+        .map((line, i) => (i === 0 ? escapeHtml(line) : '⇒ ' + escapeHtml(line)))
+        .join('<br>');
+    
+      const errorsHtml = (syntactic.errors && syntactic.errors.length)
+        ? `<ul class="syntactic-errors">
+            ${syntactic.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+           </ul>`
+        : '<p class="syntactic-ok">Sin errores sintácticos.</p>';
+    
+      container.innerHTML = `
+        <div class="syntactic-wrapper">
+          <div class="syntactic-summary">
+            <span class="syntactic-status syntactic-status-${syntactic.isValid ? 'ok' : 'error'}">
+              ${syntactic.isValid ? 'Válido' : 'Inválido'}
+            </span>
+          </div>
+    
+          ${errorsHtml}
+    
+          <div class="syntactic-grid">
+            <!-- IZQUIERDA: Árbol / derivación -->
+            <div class="syntactic-left">
+              <h4 class="syntactic-title">Árbol de derivación</h4>
+              <div class="syntactic-tree">
+                ${derivHtml}
+              </div>
+            </div>
+    
+            <!-- DERECHA: Contenido header / payload / firma -->
+            <div class="syntactic-right">
+              <h4 class="syntactic-title">Contenido del token</h4>
+    
+              <div class="syntactic-block">
+                <div class="syntactic-label">Header (JSON)</div>
+                <pre class="syntactic-pre">${headerJson}</pre>
+              </div>
+    
+              <div class="syntactic-block">
+                <div class="syntactic-label">Payload (JSON)</div>
+                <pre class="syntactic-pre">${payloadJson}</pre>
+              </div>
+    
+              <div class="syntactic-block">
+                <div class="syntactic-label">Firma (Base64URL)</div>
+                <code class="syntactic-code">${escapeHtml(sigRaw)}</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }    
+
     async function loadHistoryFromServer() {
       try {
         const res = await fetch(`${API_URL}/api/history`);
@@ -416,7 +531,6 @@ const API_URL = "http://localhost:3000";
       }
     }
     
-
     function getHistoryField(item, field) {
       if (!item || !item.data) return '';
     

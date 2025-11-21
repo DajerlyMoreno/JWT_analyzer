@@ -42,32 +42,36 @@ export const analyzeToken = async (req, res) => {
 
 /** ========== ANÁLISIS COMPLETO (NO SE GUARDA EN BD) ========== */
 export const fullAnalysis = async (req, res) => {
+  const { token, secret } = req.body;
+
+  // 📌 1) Siempre construimos la tabla léxica
+  const lexical = lexicalAnalysis(token);
+
+  let parsed = null;
+  let syntactic = { grammar: "", isValid: false, errors: [] };
+  let semantic = null;
+  let pumping = null;
+
   try {
-    const { token, secret } = req.body;
-    const parsed = parseJwt(token);
-
-    const lexical = lexicalAnalysis(token);
-    const syntactic = syntacticAnalysis(parsed);
-    const semantic = semanticAnalysis(parsed, secret || null);
-
-    let pumping;
-    try {
-      pumping = pumpingLemmaAnalysis(token);
-    } catch (e) {
-      pumping = { error: `pumping failed: ${e.message}` };
-    }
-
-    const response = { lexical, syntactic, semantic, pumping };
-
-    // ❌ YA NO SE GUARDA EN MONGO
-    // Antes: History.create({ type: "analysis", ... })
-
-    res.json(response);
-  } catch (err) {
-    console.error("❌ /comprehensive-analysis error:", err);
-    res.status(400).json({ error: err.message });
+    // 📌 2) Intentamos parsear, pero si falla NO devolvemos 400
+    parsed = parseJwt(token);
+    syntactic = syntacticAnalysis(parsed);
+    semantic = semanticAnalysis(parsed, secret || null);
+  } catch (e) {
+    // 📌 3) Metemos el error como error sintáctico
+    syntactic.errors.push(e.message);
   }
+
+  try {
+    pumping = pumpingLemmaAnalysis(token);
+  } catch (e) {
+    pumping = { error: `pumping failed: ${e.message}` };
+  }
+
+  // 📌 4) Respondemos SIEMPRE con la estructura completa
+  res.json({ lexical, syntactic, semantic, pumping });
 };
+
 
 /** ========== CODIFICACIÓN ========== */
 export const encodeToken = async (req, res) => {
@@ -109,8 +113,6 @@ export const verifySignature = async (req, res) => {
 
     const response = { algorithm: alg, signatureVerified: ok };
 
-    // ❌ Antes se guardaba como type: "analysis"
-    // await History.create({ type: "analysis", ... });
 
     res.json(response);
   } catch (err) {
