@@ -370,7 +370,7 @@ const API_URL = "http://localhost:3000";
       const secretEl = document.getElementById('secretInput');
       const secret = secretEl ? (secretEl.value || "").trim() : "";
     
-      const outputs = ['lexicalResult', 'syntacticResult', 'semanticResult', 'pumpingResult'];
+      const outputs = ['lexicalResult', 'syntacticResult', 'semanticResult'];
       const setAll = (text) => outputs.forEach(id => document.getElementById(id).textContent = text);
     
       if (!token) {
@@ -402,7 +402,6 @@ const API_URL = "http://localhost:3000";
         renderLexicalTable(data.lexical);
         renderSyntacticPanel(data.syntactic);
         document.getElementById('semanticResult').textContent = JSON.stringify(data.semantic, null, 2);
-        document.getElementById('pumpingResult').textContent = JSON.stringify(data.pumping, null, 2);
     
         addToHistory('analysis', data);
       } catch (error) {
