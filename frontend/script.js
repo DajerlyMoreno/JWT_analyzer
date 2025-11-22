@@ -396,8 +396,8 @@ const API_URL = "http://localhost:3000";
         const data = await res.json();
         
         renderLexicalAnalysis(data.lexical);
+        renderSemanticAnalysis(data.semantic);      
         document.getElementById('syntacticResult').textContent = JSON.stringify(data.syntactic, null, 2);
-        document.getElementById('semanticResult').textContent  = JSON.stringify(data.semantic,  null, 2);
         document.getElementById('pumpingResult').textContent   = JSON.stringify(data.pumping,   null, 2);
 
         // 🔹 Aquí integramos el árbol de derivación
@@ -693,18 +693,158 @@ function renderLexicalAnalysis(lexical) {
     window.addEventListener('DOMContentLoaded', loadHistoryFromServer);
 
     function renderDerivationTree(tree) {
-  const container = document.getElementById('derivationTree');
-  if (!container) return;
+      const container = document.getElementById('derivationTree');
+      if (!container) return;
 
-  if (!tree) {
-    container.innerHTML = '<p class="text-xs text-slate-400">No derivation tree available (invalid syntax).</p>';
-    return;
-  }
+      if (!tree) {
+        container.innerHTML = '<p class="text-xs text-slate-400">No derivation tree available (invalid syntax).</p>';
+        return;
+      }
 
-  container.innerHTML = '';
-  const rootEl = createTreeNode(tree);
-  container.appendChild(rootEl);
-}
+      container.innerHTML = '';
+      const rootEl = createTreeNode(tree);
+      container.appendChild(rootEl);
+    }
+
+    function renderSemanticAnalysis(semantic) {
+      const container = document.getElementById('semanticResult');
+      if (!container) return;
+
+      if (!semantic) {
+        container.textContent = 'No semantic data available.';
+        return;
+      }
+
+      const {
+        valid,
+        errors = [],
+        warnings = [],
+        signatureVerified,
+        algorithm,
+        symbolTable = {}
+      } = semantic;
+
+      const headerSymbols = symbolTable.header || {};
+      const payloadSymbols = symbolTable.payload || {};
+
+      // ---- Estado general ----
+      let html = '';
+
+      const isValid = Boolean(valid) && !errors.length;
+
+      html += `<div class="text-sm mb-2">`;
+      html += `<div><strong>Overall status:</strong> ${
+        isValid
+          ? '<span style="color:#4ade80;">✅ Valid token</span>'
+          : '<span style="color:#f97373;">❌ Invalid token</span>'
+      }</div>`;
+      html += `<div><strong>Algorithm:</strong> ${algorithm || '<span style="color:#9CA3AF;">(not specified)</span>'}</div>`;
+
+      // ---- Firma ----
+      let sigText = '';
+      if (signatureVerified === true) {
+        sigText = '<span style="color:#4ade80;">Signature verified (secret matches) ✅</span>';
+      } else if (signatureVerified === false) {
+        sigText = '<span style="color:#f97373;">Signature verification failed ❌</span>';
+      } else {
+        sigText = '<span style="color:#9CA3AF;">Signature not verified (no secret provided)</span>';
+      }
+      html += `<div><strong>Signature:</strong> ${sigText}</div>`;
+      html += `</div>`;
+
+      // ---- Errores ----
+      html += `<div class="text-xs mt-2">`;
+      html += `<strong>Semantic errors:</strong>`;
+      if (!errors.length) {
+        html += `<div style="color:#4ade80; margin-top:2px;">No semantic errors detected.</div>`;
+      } else {
+        html += `<ul style="margin-top:2px; padding-left:1rem; color:#f97373;">`;
+        errors.forEach(err => {
+          html += `<li>• ${err}</li>`;
+        });
+        html += `</ul>`;
+      }
+      html += `</div>`;
+
+      // ---- Warnings ----
+      html += `<div class="text-xs mt-2">`;
+      html += `<strong>Warnings:</strong>`;
+      if (!warnings.length) {
+        html += `<div style="color:#9CA3AF; margin-top:2px;">No warnings.</div>`;
+      } else {
+        html += `<ul style="margin-top:2px; padding-left:1rem; color:#facc15;">`;
+        warnings.forEach(w => {
+          html += `<li>• ${w}</li>`;
+        });
+        html += `</ul>`;
+      }
+      html += `</div>`;
+
+      // ---- Tabla de símbolos ----
+      html += `<div class="text-xs mt-3">`;
+      html += `<strong>Symbol table (inferred types):</strong>`;
+
+      if (!Object.keys(headerSymbols).length && !Object.keys(payloadSymbols).length) {
+        html += `<div style="color:#9CA3AF; margin-top:2px;">No symbol information available.</div>`;
+      } else {
+        html += `
+          <div class="overflow-x-auto mt-1">
+            <table class="w-full text-[0.7rem] border-collapse">
+              <thead>
+                <tr style="border-bottom:1px solid #374151;">
+                  <th style="text-align:left; padding:4px 6px;">Scope</th>
+                  <th style="text-align:left; padding:4px 6px;">Field</th>
+                  <th style="text-align:left; padding:4px 6px;">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+
+        Object.entries(headerSymbols).forEach(([key, type]) => {
+          html += `
+            <tr style="border-top:1px solid #111827;">
+              <td style="padding:4px 6px; color:#9CA3AF;">header</td>
+              <td style="padding:4px 6px; font-family:'JetBrains Mono', monospace;">${key}</td>
+              <td style="padding:4px 6px;">${type}</td>
+            </tr>
+          `;
+        });
+
+        Object.entries(payloadSymbols).forEach(([key, type]) => {
+          html += `
+            <tr style="border-top:1px solid #111827;">
+              <td style="padding:4px 6px; color:#9CA3AF;">payload</td>
+              <td style="padding:4px 6px; font-family:'JetBrains Mono', monospace;">${key}</td>
+              <td style="padding:4px 6px;">${type}</td>
+            </tr>
+          `;
+        });
+
+        html += `
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      html += `</div>`;
+
+      // ---- Qué valida el análisis semántico (documentación integrada) ----
+      html += `
+        <div class="text-[0.7rem] mt-3" style="color:#9CA3AF;">
+          <strong>What is being validated?</strong>
+          <ul style="margin-top:2px; padding-left:1rem;">
+            <li>• Presence and validity of <code>alg</code> in the header (allowed algorithms: HS256, HS384, HS512).</li>
+            <li>• Temporal claims: <code>exp</code>, <code>nbf</code>, <code>iat</code> (expiration, not-before, issued-at).</li>
+            <li>• Types of standard claims: <code>iss</code>, <code>sub</code>, <code>aud</code>, <code>jti</code>, <code>exp</code>, <code>nbf</code>, <code>iat</code>.</li>
+            <li>• Optional signature verification if a secret is provided.</li>
+          </ul>
+        </div>
+      `;
+
+      container.innerHTML = html;
+    }
+
 
 function createTreeNode(node) {
   const wrapper = document.createElement('div');
