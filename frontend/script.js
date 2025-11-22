@@ -204,7 +204,7 @@ const API_URL = "http://localhost:3000";
         
         // Validar que el backend devuelva la estructura correcta
         if (!data.header || !data.payload || !data.parts) {
-          throw new Error('Token inválido o estructura de respuesta incorrecta');
+          throw new Error('Token inválido');
         }
 
         // Crear las 3 tarjetas solo si la respuesta es válida
@@ -384,10 +384,9 @@ const API_URL = "http://localhost:3000";
         const res = await fetch(`${API_URL}/api/comprehensive-analysis`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, secret }) // secret puede ir vacío
+          body: JSON.stringify({ token, secret })
         });
     
-        // Si viene 400, leo el json y lanzo el error del backend
         if (!res.ok) {
           let errText = `HTTP ${res.status}`;
           try {
@@ -401,7 +400,7 @@ const API_URL = "http://localhost:3000";
     
         renderLexicalTable(data.lexical);
         renderSyntacticPanel(data.syntactic);
-        document.getElementById('semanticResult').textContent = JSON.stringify(data.semantic, null, 2);
+        renderSemanticPanel(data.semantic); 
     
         addToHistory('analysis', data);
       } catch (error) {
@@ -639,6 +638,203 @@ const API_URL = "http://localhost:3000";
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }
+    
+    function renderSemanticPanel(semantic) {
+      const container = document.getElementById('semanticResult');
+    
+      if (!semantic) {
+        container.innerHTML = `
+          <div class="semantic-empty">No semantic data available</div>
+        `;
+        return;
+      }
+    
+      // 🛑 Si el análisis semántico fue saltado
+      if (semantic.skipped) {
+        container.innerHTML = `
+          <div class="semantic-header">
+            <div class="semantic-status invalid">
+              <i data-lucide="x-circle" class="w-6 h-6"></i>
+              <span>Semantic Analysis Skipped</span>
+            </div>
+          </div>
+    
+          <div class="semantic-body">
+            <div class="semantic-section">
+              <div class="semantic-empty">
+                <i data-lucide="alert-circle" style="width: 48px; height: 48px; color: var(--neon-red); margin-bottom: 0.5rem;"></i>
+                <p style="font-size: 1rem; font-weight: 600; color: var(--neon-red);">
+                  The semantic analysis was not performed because the syntactic analysis failed.
+                </p>
+              </div>
+            </div>
+          </div>
+        `;
+    
+        lucide.createIcons();
+        return;
+      }
+    
+      // ======================
+      //    CASO NORMAL
+      // ======================
+      const isValid = semantic.valid === true;
+      const hasErrors = semantic.errors && semantic.errors.length > 0;
+      const hasWarnings = semantic.warnings && semantic.warnings.length > 0;
+      const signatureVerified = semantic.signatureVerified;
+      const algorithm = semantic.algorithm || 'Unknown';
+    
+      // ======================
+      //     HEADER
+      // ======================
+      let headerHtml = `
+        <div class="semantic-header">
+          <div class="semantic-status ${isValid ? 'valid' : 'invalid'}">
+            <i data-lucide="${isValid ? 'check-circle' : 'x-circle'}" class="w-6 h-6"></i>
+            <span>${isValid ? 'Valid' : 'Invalid'}</span>
+          </div>
+    
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <span class="semantic-algorithm">
+              <i data-lucide="key" class="w-4 h-4"></i>
+              ${escapeHtml(algorithm)}
+            </span>
+      `;
+    
+      if (signatureVerified !== null) {
+        headerHtml += `
+          <span class="semantic-badge ${signatureVerified ? 'verified' : 'not-verified'}">
+            <i data-lucide="${signatureVerified ? 'shield-check' : 'shield-alert'}" class="w-4 h-4"></i>
+            ${signatureVerified ? 'Signature Verified' : 'Signature Invalid'}
+          </span>
+        `;
+      }
+    
+      headerHtml += `
+          </div>
+        </div>
+      `;
+    
+      // ======================
+      //     BODY
+      // ======================
+      let bodyHtml = `<div class="semantic-body">`;
+    
+      // -------- Symbol Table: Header --------
+      if (semantic.symbolTable?.header) {
+        const headerFields = Object.entries(semantic.symbolTable.header);
+        if (headerFields.length > 0) {
+          bodyHtml += `
+            <div class="semantic-section">
+              <div class="semantic-section-title">
+                <i data-lucide="file-code" class="w-5 h-5"></i>
+                Header Symbol Table
+              </div>
+              <table class="semantic-table">
+                <thead>
+                  <tr><th>Field</th><th>Type</th></tr>
+                </thead>
+                <tbody>
+                  ${headerFields.map(([field, type]) => `
+                    <tr>
+                      <td class="semantic-field">${escapeHtml(field)}</td>
+                      <td><span class="semantic-type ${type}">${escapeHtml(type)}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+      }
+    
+      // -------- Symbol Table: Payload --------
+      if (semantic.symbolTable?.payload) {
+        const payloadFields = Object.entries(semantic.symbolTable.payload);
+        if (payloadFields.length > 0) {
+          bodyHtml += `
+            <div class="semantic-section">
+              <div class="semantic-section-title">
+                <i data-lucide="database" class="w-5 h-5"></i>
+                Payload Symbol Table
+              </div>
+              <table class="semantic-table">
+                <thead>
+                  <tr><th>Field</th><th>Type</th></tr>
+                </thead>
+                <tbody>
+                  ${payloadFields.map(([field, type]) => `
+                    <tr>
+                      <td class="semantic-field">${escapeHtml(field)}</td>
+                      <td><span class="semantic-type ${type}">${escapeHtml(type)}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+      }
+    
+      // -------- Errors --------
+      if (hasErrors) {
+        bodyHtml += `
+          <div class="semantic-section">
+            <div class="semantic-section-title">
+              <i data-lucide="alert-circle" class="w-5 h-5"></i>
+              Errors
+            </div>
+            <div class="semantic-messages">
+              ${semantic.errors.map(err => `
+                <div class="semantic-message error">
+                  <i data-lucide="x-circle" class="w-5 h-5 semantic-message-icon"></i>
+                  <span>${escapeHtml(err)}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+    
+      // -------- Warnings --------
+      if (hasWarnings) {
+        bodyHtml += `
+          <div class="semantic-section">
+            <div class="semantic-section-title">
+              <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+              Warnings
+            </div>
+            <div class="semantic-messages">
+              ${semantic.warnings.map(warn => `
+                <div class="semantic-message warning">
+                  <i data-lucide="alert-triangle" class="w-5 h-5 semantic-message-icon"></i>
+                  <span>${escapeHtml(warn)}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+    
+      // -------- No issues --------
+      if (!hasErrors && !hasWarnings) {
+        bodyHtml += `
+          <div class="semantic-section">
+            <div class="semantic-empty">
+              <i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--neon-green); margin-bottom: 0.5rem;"></i>
+              <p style="font-size: 1rem; font-weight: 600; color: var(--neon-green);">
+                No semantic issues detected
+              </p>
+            </div>
+          </div>
+        `;
+      }
+    
+      bodyHtml += `</div>`; // close semantic-body
+    
+      container.innerHTML = headerHtml + bodyHtml;
+      lucide.createIcons();
     }
     
     

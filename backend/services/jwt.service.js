@@ -1,6 +1,7 @@
 // services/jwt.service.js
 import crypto from "crypto";
-import { jwtAutomaton } from "./automata.service.js";
+import { runJwtAutomaton } from "./automata.service.js";
+
 
 /** ======================
  *  Base64URL helpers
@@ -124,7 +125,7 @@ export function lexicalAnalysis(token) {
  *  ====================== */
 // services/jwt.service.js
 
-export function syntacticAnalysis(parsed) {
+export function syntacticAnalysis(parsed, rawToken = null) {
   const grammar = `
 S  -> J
 J  -> H "." P "." Sg
@@ -134,24 +135,34 @@ Sg -> Base64url(firma)
   `.trim();
 
   const errors = [];
+  let automaton = null;
 
-  // Si no hay parsed o partes, devolvemos error sintáctico general
   if (!parsed || !parsed.parts) {
     errors.push("Token incompleto o no se pudo parsear correctamente.");
     return {
       grammar,
       isValid: false,
       errors,
-      // añadimos campos vacíos para que el front no truene
       derivation: [],
       parseTree: null,
-      segments: null
+      segments: null,
+      automaton
     };
+  }
+
+  // ✅ Ejecutar el autómata sobre el token crudo (si lo pasas)
+  if (rawToken) {
+    automaton = runJwtAutomaton(rawToken);
+    if (!automaton.accepted) {
+      errors.push(
+        `Autómata rechaza el token en la posición ${automaton.errorPosition}: ${automaton.errorReason}`
+      );
+    }
   }
 
   const { headerB64, payloadB64, signatureB64 } = parsed.parts;
 
-  // ✅ Validaciones usando la validateBase64UrlPart "segura"
+  // ... (resto de validaciones que ya tienes)
   if (!validateBase64UrlPart(headerB64)) {
     errors.push("HEADER no cumple Base64URL");
   }
@@ -170,7 +181,6 @@ Sg -> Base64url(firma)
 
   const isValid = errors.length === 0;
 
-  // 🧩 Derivación paso a paso (árbol en forma de “niveles”)
   const derivation = [
     "S",
     "J",
@@ -179,7 +189,6 @@ Sg -> Base64url(firma)
     `${headerB64} "." ${payloadB64} "." ${signatureB64}`
   ];
 
-  // 🧱 Árbol sencillo como estructura anidada (por si luego quieres dibujarlo bonito)
   const parseTree = {
     symbol: "S",
     children: [
@@ -190,46 +199,29 @@ Sg -> Base64url(firma)
           {
             symbol: "H",
             rule: 'J -> H "." P "." Sg',
-            children: [
-              {
-                symbol: "Base64url(JSON)",
-                value: headerB64
-              }
-            ]
+            children: [{ symbol: "Base64url(JSON)", value: headerB64 }]
           },
           { symbol: '"."', value: "." },
           {
             symbol: "P",
-            children: [
-              {
-                symbol: "Base64url(JSON)",
-                value: payloadB64
-              }
-            ]
+            children: [{ symbol: "Base64url(JSON)", value: payloadB64 }]
           },
           { symbol: '"."', value: "." },
           {
             symbol: "Sg",
-            children: [
-              {
-                symbol: "Base64url(firma)",
-                value: signatureB64
-              }
-            ]
+            children: [{ symbol: "Base64url(firma)", value: signatureB64 }]
           }
         ]
       }
     ]
   };
 
-  // 📦 Segmentos que quieres ver en el front
   const segments = {
     headerB64,
     payloadB64,
     signatureB64,
     header: parsed.header || null,
     payload: parsed.payload || null,
-    // la firma normalmente no se decodifica a JSON, así que enviamos tal cual
     signatureRaw: signatureB64
   };
 
@@ -237,130 +229,158 @@ Sg -> Base64url(firma)
     grammar,
     isValid,
     errors,
-    derivation,   // lista de pasos S ⇒ … ⇒ token
-    parseTree,    // árbol estructurado
-    segments      // header/payload decodificados + partes en Base64URL
+    derivation,
+    parseTree,
+    segments,
+    automaton   // 👈 para mostrar en el front la traza del AFD
   };
 }
 
 
-/** ======================
- *  Utilidades semánticas
- *  ====================== */
-function validateTimeClaims(payload, now = Math.floor(Date.now() / 1000), skew = 300) {
+
+/* ======================================================
+ *  Validación de Claims Temporales
+ * ====================================================== */
+function validateTimeClaims(
+  payload,
+  now = Math.floor(Date.now() / 1000),
+  skew = 300
+) {
   const errs = [];
-  if (typeof payload.exp === "number" && now - skew >= payload.exp) errs.push("exp expirado");
-  if (typeof payload.nbf === "number" && now + skew < payload.nbf) errs.push("nbf aún no válido");
-  if (typeof payload.iat === "number" && payload.iat - skew > now) errs.push("iat en el futuro");
+
+  // exp
+  if (typeof payload.exp === "number" && now - skew >= payload.exp)
+    errs.push("exp expirado");
+
+  // nbf
+  if (typeof payload.nbf === "number" && now + skew < payload.nbf)
+    errs.push("nbf aún no válido");
+
+  // iat
+  if (typeof payload.iat === "number" && payload.iat - skew > now)
+    errs.push("iat en el futuro");
+
   // tipos
   ["exp", "nbf", "iat"].forEach(k => {
-    if (payload[k] !== undefined && typeof payload[k] !== "number") errs.push(`${k} debe ser número (segundos Unix)`);
+    if (payload[k] !== undefined && typeof payload[k] !== "number")
+      errs.push(`${k} debe ser número (segundos Unix)`);
   });
+
   return errs;
 }
 
+/* ======================================================
+ *  Algoritmos permitidos
+ * ====================================================== */
 function allowedAlg(alg) {
   return ["HS256", "HS384", "HS512"].includes(alg);
 }
 
-/** ======================
- *  Análisis Semántico
- *  ====================== */
-export function semanticAnalysis(parsed, secret = null) {
+/* ======================================================
+ *  Análisis Semántico Completo
+ * ====================================================== */
+export function semanticAnalysis(parsed, syntacticIsValid, secret = null) {
+
+  if (!syntacticIsValid) {
+    return {
+      valid: false,
+      errors: [
+        "No se realizó el análisis semántico porque el análisis sintáctico presentó errores."
+      ],
+      warnings: [],
+      signatureVerified: null,
+      algorithm: parsed?.header?.alg || null,
+      symbolTable: {
+        header: {},
+        payload: {}
+      },
+      skipped: true   // bandera útil para el front
+    };
+  }
+
+  // 🔓 2) Si la sintaxis es válida, continuamos como antes
   const header = parsed.header || {};
   const payload = parsed.payload || {};
   const errors = [];
   const warnings = [];
 
-  // Header obligatorio
-  if (!header.alg) errors.push("HEADER.alg es obligatorio");
-  if (header.typ && header.typ !== "JWT") warnings.push(`HEADER.typ recomendado "JWT", recibido: ${header.typ}`);
-  if (header.alg && !allowedAlg(header.alg)) errors.push(`Algoritmo no permitido: ${header.alg}`);
+  /* ------------------------
+   * Claims obligatorios (TU TOKEN)
+   * ------------------------ */
+  const REQUIRED_CLAIMS = ["sub", "name", "admin", "iat"];
 
-  // Claims estándar
+  REQUIRED_CLAIMS.forEach(c => {
+    if (payload[c] === undefined)
+      errors.push(`Claim obligatorio '${c}' ausente`);
+  });
+
+  /* ------------------------
+   * Validación del HEADER
+   * ------------------------ */
+  if (!header.alg)
+    errors.push("HEADER.alg es obligatorio");
+
+  if (header.typ && header.typ !== "JWT")
+    warnings.push(`HEADER.typ recomendado 'JWT', recibido: ${header.typ}`);
+
+  if (header.alg && !allowedAlg(header.alg))
+    errors.push(`Algoritmo no permitido: ${header.alg}`);
+
+  /* ------------------------
+   * Claims Estándar (tipos)
+   * ------------------------ */
   const timeErrs = validateTimeClaims(payload);
   errors.push(...timeErrs);
 
-  // Tipos comunes
-  if (payload.aud && typeof payload.aud !== "string" && !Array.isArray(payload.aud)) {
-    errors.push("aud debe ser string o array de strings");
-  }
-  ["iss","sub","jti"].forEach(k => {
-    if (payload[k] !== undefined && typeof payload[k] !== "string") errors.push(`${k} debe ser string`);
+  ["sub", "name"].forEach(k => {
+    if (payload[k] !== undefined && typeof payload[k] !== "string")
+      errors.push(`${k} debe ser string`);
   });
 
-  // Verificación criptográfica (si se provee secret)
+  if (payload.admin !== undefined && typeof payload.admin !== "boolean")
+    errors.push("admin debe ser boolean (true/false)");
+
+  /* ------------------------
+   * Verificación criptográfica (opcional)
+   * ------------------------ */
   let signatureVerified = null;
   if (secret) {
     try {
-      signatureVerified = verifyHmac(parsed.parts.headerB64, parsed.parts.payloadB64, parsed.parts.signatureB64, secret, header.alg || "HS256");
+      signatureVerified = verifyHmac(
+        parsed.parts.headerB64,
+        parsed.parts.payloadB64,
+        parsed.parts.signatureB64,
+        secret,
+        header.alg || "HS256"
+      );
     } catch (e) {
       errors.push(`Error verificando firma: ${e.message}`);
       signatureVerified = false;
     }
   }
 
+  /* ------------------------
+   * Tabla de Símbolos
+   * ------------------------ */
+  const symbolTable = {
+    header: Object.fromEntries(
+      Object.entries(header).map(([k, v]) => [k, typeof v])
+    ),
+    payload: Object.fromEntries(
+      Object.entries(payload).map(([k, v]) => [k, typeof v])
+    )
+  };
+
+  /* ------------------------
+   * Resultado final
+   * ------------------------ */
   return {
     valid: errors.length === 0 && (signatureVerified !== false),
     errors,
     warnings,
     signatureVerified,
     algorithm: header.alg || null,
-    symbolTable: {
-      header: Object.fromEntries(Object.entries(header).map(([k,v]) => [k, typeof v])),
-      payload: Object.fromEntries(Object.entries(payload).map(([k,v]) => [k, typeof v]))
-    }
-  };
-}
-
-/** ======================
- *  Pumping lemma (didáctico)
- *  ====================== 
- *  Lenguaje Regular L = base64url+ "." base64url+ "." base64url+
- *  Retorna una descomposición x y z para |y|>0, |xy|<=p, con p=mínimo 5
- */
-// Lenguaje didáctico: L = base64url+ "." base64url+ "." base64url+
-export function pumpingLemmaAnalysis(token, p = 5) {
-  const regex = /^([A-Za-z0-9\-_]+)\.([A-Za-z0-9\-_]+)\.([A-Za-z0-9\-_]+)$/;
-  const m = regex.exec(token);
-  const inLanguage = Boolean(m);
-
-  // Resultado base (sin fallar)
-  const base = {
-    language: "L = base64url+ '.' base64url+ '.' base64url+",
-    pumpingLength: p,
-    inLanguage,
-    decomposition: null
-  };
-
-  if (!inLanguage) return base;
-  if (token.length < p) return { ...base, note: "Token más corto que p; no se aplica descomposición." };
-
-  // Tomamos y como el PRIMER carácter del primer segmento (garantiza |y| >= 1)
-  const first = m[1];
-  const y = first.charAt(0);
-  if (!y) return { ...base, note: "Primer segmento vacío (no debería pasar con la regex)." };
-
-  const x = "";                           // elegimos x vacío para simplificar y asegurar |xy|<=p
-  const rest = first.slice(1) + `.${m[2]}.${m[3]}`;  // lo que queda del primer segmento + ".segundo.tercero"
-  const zStr = rest;                      // <- z es la “cola” restante
-
-  // Construimos las cadenas bombeadas sin usar ninguna variable no declarada
-  const pumped2 = y.repeat(2) + zStr;     // duplica y
-  const pumped0 = "" + zStr;              // elimina y
-
-  return {
-    ...base,
-    decomposition: {
-      x,
-      y,
-      z: zStr,
-      check: {
-        yLength: y.length,
-        xyLength: (x + y).length,
-        pumped2,
-        pumped0
-      }
-    }
+    symbolTable,
+    skipped: false    // aquí explícitamente NO se omitió
   };
 }
