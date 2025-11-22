@@ -179,23 +179,21 @@ const API_URL = "http://localhost:3000";
 
     async function decodeToken() {
       const token = document.getElementById('tokenInput').value.trim();
-      const output = document.getElementById('decodeResult');
+      const decodeResultContainer = document.getElementById('decodeResult');
       const viewAnalysisBtn = document.getElementById('viewAnalysisBtn');
       
       if (!token) {
-        output.textContent = '⚠️ Please enter a JWT token';
+        decodeResultContainer.innerHTML = '<div class="error-box">⚠️ Please enter a JWT token</div>';
         viewAnalysisBtn.classList.add('hidden');
         return;
       }
 
-      output.textContent = '⏳ Decoding token...';
+      decodeResultContainer.innerHTML = '<div class="loading-box">⏳ Decoding token...</div>';
       viewAnalysisBtn.classList.add('hidden');
 
       try {
-        // Guardar el token actual
         currentAnalyzedToken = token;
 
-        // Decodificar token
         const response = await fetch(`${API_URL}/api/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -203,18 +201,46 @@ const API_URL = "http://localhost:3000";
         });
         
         const data = await response.json();
-        output.textContent = JSON.stringify(data, null, 2);
+        
+        // Validar que el backend devuelva la estructura correcta
+        if (!data.header || !data.payload || !data.parts) {
+          throw new Error('Token inválido o estructura de respuesta incorrecta');
+        }
+
+        // Crear las 3 tarjetas solo si la respuesta es válida
+        decodeResultContainer.innerHTML = `
+          <div class="decode-card">
+            <div class="decode-card-header">
+              <i data-lucide="file-code" class="w-5 h-5"></i>
+              <span>Header</span>
+            </div>
+            <pre id="headerResult" class="decode-content">${JSON.stringify(data.header, null, 2)}</pre>
+          </div>
+
+          <div class="decode-card">
+            <div class="decode-card-header">
+              <i data-lucide="database" class="w-5 h-5"></i>
+              <span>Payload</span>
+            </div>
+            <pre id="payloadResult" class="decode-content">${JSON.stringify(data.payload, null, 2)}</pre>
+          </div>
+
+          <div class="decode-card">
+            <div class="decode-card-header">
+              <i data-lucide="shield" class="w-5 h-5"></i>
+              <span>Signature</span>
+            </div>
+            <pre id="signatureResult" class="decode-content">${data.parts.signatureB64 || 'Signature not available'}</pre>
+          </div>
+        `;
+
         addToHistory('decode', data);
-
-        // Realizar análisis completo en segundo plano
         performBackgroundAnalysis(token);
-
-        // Mostrar botón para ver análisis
         viewAnalysisBtn.classList.remove('hidden');
         lucide.createIcons();
 
       } catch (error) {
-        output.textContent = `❌ Error: ${error.message}`;
+        decodeResultContainer.innerHTML = `<div class="error-box">❌ Token inválido: ${error.message}</div>`;
         viewAnalysisBtn.classList.add('hidden');
       }
     }

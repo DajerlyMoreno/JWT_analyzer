@@ -38,11 +38,6 @@ export function parseJwt(token) {
 
   const [headerB64, payloadB64, signatureB64] = parts;
 
-  // Validación léxica por parte (alfabeto Base64URL)
-  //if (!validateBase64UrlPart(headerB64)) throw new Error("HEADER no es Base64URL válido");
-  //if (!validateBase64UrlPart(payloadB64)) throw new Error("PAYLOAD no es Base64URL válido");
-  //if (!validateBase64UrlPart(signatureB64)) throw new Error("SIGNATURE no es Base64URL válido");
-
   // Decodificación + JSON
   const headerStr = base64UrlDecode(headerB64).toString("utf8");
   const payloadStr = base64UrlDecode(payloadB64).toString("utf8");
@@ -102,13 +97,13 @@ export function lexicalAnalysis(token) {
     if (part && part !== "") {
       // Hay contenido, validamos Base64URL
       if (!validateBase64UrlPart(part)) {
-        push(part, "SEGMENT", "❌ ERROR");
+        push(part, "SEGMENT", "❌ ERROR Base64URL inválido");
       } else {
         push(part, "SEGMENT", "🟢 Válido");
       }
     } else {
       // Bloque vacío → error léxico de segmento vacío
-      push("(vacío)", "SEGMENT", "❌ ERROR");
+      push("(vacío)", "SEGMENT", "❌ ERROR BLOQUE VACÍO");
     }
 
     // --- DOT (el punto que separa este bloque del siguiente) ---

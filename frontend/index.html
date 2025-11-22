@@ -57,7 +57,7 @@
           
           <div class="input-group">
             <label class="input-label">JWT Token</label>
-            <textarea id="tokenInput" class="textarea-field" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"></textarea>
+            <textarea id="tokenInput" class="textarea-field" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></textarea>
           </div>
 
           <button class="btn-primary" onclick="decodeToken()">
@@ -67,9 +67,15 @@
 
           <div class="result-title">
             <i data-lucide="terminal" class="w-4 h-4"></i>
-            Output
+            Decoded Results
           </div>
-          <pre id="decodeResult" class="result-box">Waiting for token...</pre>
+
+          <div id="decodeResult" class="decode-grid">
+            <div class="empty-decode">
+              <i data-lucide="key" class="empty-icon"></i>
+              <p>Waiting for token...</p>
+            </div>
+          </div>
 
           <button id="viewAnalysisBtn" class="btn-secondary hidden" onclick="goToAnalysis()">
             <i data-lucide="microscope" class="w-5 h-5"></i>
