@@ -114,7 +114,6 @@ export function lexicalAnalysis(token) {
  *  Análisis Sintáctico (verificador CFG)
  *  ====================== */
 export function syntacticAnalysis(parsed) {
-  // Gramática informal/didáctica
   const grammar = `
 S -> J
 J -> H "." P "." Sg
@@ -123,25 +122,82 @@ P -> Base64url(JSON)
 Sg -> Base64url(firma)
   `.trim();
 
-  // Verificación estructural (descendente simple)
-  const isValid =
-    typeof parsed?.parts?.headerB64 === "string" &&
-    typeof parsed?.parts?.payloadB64 === "string" &&
-    typeof parsed?.parts?.signatureB64 === "string" &&
-    validateBase64UrlPart(parsed.parts.headerB64) &&
-    validateBase64UrlPart(parsed.parts.payloadB64) &&
-    validateBase64UrlPart(parsed.parts.signatureB64) &&
-    parsed.header && parsed.payload;
-
   const errors = [];
-  if (!validateBase64UrlPart(parsed.parts.headerB64)) errors.push("HEADER no cumple Base64URL");
-  if (!validateBase64UrlPart(parsed.parts.payloadB64)) errors.push("PAYLOAD no cumple Base64URL");
-  if (!validateBase64UrlPart(parsed.parts.signatureB64)) errors.push("SIGNATURE no cumple Base64URL");
-  if (!parsed.header) errors.push("HEADER no es JSON válido");
+
+  // Validaciones léxicas básicas
+  const headerOk    = validateBase64UrlPart(parsed.parts.headerB64);
+  const payloadOk   = validateBase64UrlPart(parsed.parts.payloadB64);
+  const signatureOk = validateBase64UrlPart(parsed.parts.signatureB64);
+
+  if (!headerOk)    errors.push("HEADER no cumple Base64URL");
+  if (!payloadOk)   errors.push("PAYLOAD no cumple Base64URL");
+  if (!signatureOk) errors.push("SIGNATURE no cumple Base64URL");
+
+  // Validación JSON
+  if (!parsed.header)  errors.push("HEADER no es JSON válido");
   if (!parsed.payload) errors.push("PAYLOAD no es JSON válido");
 
-  return { grammar, isValid, errors };
+  // isValid debe ser booleano
+  const isValid = errors.length === 0;
+
+  // Generar árbol solamente cuando la estructura es válida
+  const derivationTree = isValid ? buildDerivationTree(parsed) : null;
+
+  return {
+    grammar,
+    isValid,
+    errors,
+    derivationTree
+  };
 }
+
+
+/** ======================
+ *  Contrucción de Arbol de Derivación
+ *  ====================== */
+function buildDerivationTree(parsed) {
+  if (!parsed || !parsed.parts) return null;
+
+  const { headerB64, payloadB64, signatureB64 } = parsed.parts;
+
+  return {
+    label: "S",
+    children: [
+      {
+        label: "J",
+        children: [
+          {
+            label: "H",
+            children: [
+              { label: "HEADER", value: headerB64 }
+            ]
+          },
+          { label: ".", value: "." },
+          {
+            label: "P",
+            children: [
+              { label: "PAYLOAD", value: payloadB64 }
+            ]
+          },
+          { label: ".", value: "." },
+          {
+            label: "Sg",
+            children: [
+              { label: "SIGNATURE", value: signatureB64 }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+}
+
+
+
+
+
+
+
 
 /** ======================
  *  Utilidades semánticas

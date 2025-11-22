@@ -338,57 +338,85 @@ const API_URL = "http://localhost:3000";
         navigator.clipboard.writeText(window.generatedToken);
     }
 
-    async function performAnalysis() {
-      const tokenRaw = document.getElementById('analysisTokenInput').value;
-      const token = (tokenRaw || "").trim();
-      const secretEl = document.getElementById('secretInput');
-      const secret = secretEl ? (secretEl.value || "").trim() : "";
-    
-      const outputs = ['lexicalResult', 'syntacticResult', 'semanticResult', 'pumpingResult'];
-      const setAll = (text) => outputs.forEach(id => document.getElementById(id).textContent = text);
-    
-      if (!token) {
-        alert('⚠️ Please enter a JWT token to analyze');
-        return;
-      }
-    
-      // Validación mínima antes de llamar al backend
-      if ((token.match(/\./g) || []).length !== 3 - 1) {
-        setAll('❌ Error: el token debe tener exactamente 3 partes separadas por "."');
-        return;
-      }
-    
-      setAll('⏳ Analyzing...');
-    
-      try {
-        const res = await fetch(`${API_URL}/api/comprehensive-analysis`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, secret }) // secret puede ir vacío
-        });
-    
-        // Si viene 400, leo el json y lanzo el error del backend
-        if (!res.ok) {
-          let errText = `HTTP ${res.status}`;
-          try {
-            const errData = await res.json();
-            if (errData && errData.error) errText = errData.error;
-          } catch { /* ignore */ }
-          throw new Error(errText);
-        }
-    
-        const data = await res.json();
-    
-        document.getElementById('lexicalResult').textContent = JSON.stringify(data.lexical, null, 2);
-        document.getElementById('syntacticResult').textContent = JSON.stringify(data.syntactic, null, 2);
-        document.getElementById('semanticResult').textContent = JSON.stringify(data.semantic, null, 2);
-        document.getElementById('pumpingResult').textContent = JSON.stringify(data.pumping, null, 2);
-    
-        addToHistory('analysis', data);
-      } catch (error) {
-        setAll(`❌ Error: ${error.message}`);
-      }
+   async function performAnalysis() {
+  const tokenRaw = document.getElementById('analysisTokenInput').value;
+  const token = (tokenRaw || "").trim();
+  const secretEl = document.getElementById('secretInput');
+  const secret = secretEl ? (secretEl.value || "").trim() : "";
+
+  const outputs = ['lexicalResult', 'syntacticResult', 'semanticResult', 'pumpingResult'];
+  const setAll = (text) => outputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  });
+
+  // 🔹 helper para resetear el árbol cuando hay error
+  const resetTree = (msg = null) => {
+    const container = document.getElementById('derivationTree');
+    if (!container) return;
+    if (msg) {
+      container.innerHTML = `<p class="helper-text">${msg}</p>`;
+    } else {
+      container.innerHTML = '';
     }
+  };
+
+  if (!token) {
+    alert('⚠️ Please enter a JWT token to analyze');
+    resetTree('No derivation tree (no token provided).');
+    return;
+  }
+
+  // Validación mínima antes de llamar al backend
+  if ((token.match(/\./g) || []).length !== 3 - 1) {
+    setAll('❌ Error: el token debe tener exactamente 3 partes separadas por "."');
+    resetTree('No derivation tree (invalid token structure).');
+    return;
+  }
+
+  setAll('⏳ Analyzing...');
+  resetTree('Building derivation tree...');
+
+  try {
+    const res = await fetch(`${API_URL}/api/comprehensive-analysis`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, secret }) // secret puede ir vacío
+    });
+
+    // Si viene 400, leo el json y lanzo el error del backend
+    if (!res.ok) {
+      let errText = `HTTP ${res.status}`;
+      try {
+        const errData = await res.json();
+        if (errData && errData.error) errText = errData.error;
+      } catch { /* ignore */ }
+      throw new Error(errText);
+    }
+
+    const data = await res.json();
+    console.log("SYNTACTIC RESPONSE:", data.syntactic);
+
+
+    document.getElementById('lexicalResult').textContent   = JSON.stringify(data.lexical,   null, 2);
+    document.getElementById('syntacticResult').textContent = JSON.stringify(data.syntactic, null, 2);
+    document.getElementById('semanticResult').textContent  = JSON.stringify(data.semantic,  null, 2);
+    document.getElementById('pumpingResult').textContent   = JSON.stringify(data.pumping,   null, 2);
+
+    // 🔹 Aquí integramos el árbol de derivación
+    if (data.syntactic && data.syntactic.derivationTree) {
+      renderDerivationTree(data.syntactic.derivationTree);
+    } else {
+      resetTree('No derivation tree available (syntactic analysis failed).');
+    }
+
+    addToHistory('analysis', data);
+  } catch (error) {
+    setAll(`❌ Error: ${error.message}`);
+    resetTree('No derivation tree due to analysis error.');
+  }
+}
+
     
       
     async function loadHistoryFromServer() {
@@ -559,3 +587,50 @@ const API_URL = "http://localhost:3000";
       
     // Llama automáticamente al cargar la página
     window.addEventListener('DOMContentLoaded', loadHistoryFromServer);
+
+    function renderDerivationTree(tree) {
+  const container = document.getElementById('derivationTree');
+  if (!container) return;
+
+  if (!tree) {
+    container.innerHTML = '<p class="text-xs text-slate-400">No derivation tree available (invalid syntax).</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+  const rootEl = createTreeNode(tree);
+  container.appendChild(rootEl);
+}
+
+function createTreeNode(node) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'tree-node';
+
+  const label = document.createElement('div');
+  label.className = 'tree-label';
+
+  if (!node.children || node.children.length === 0) {
+    // hoja
+    label.classList.add('tree-label-leaf');
+    label.textContent = node.value
+      ? `${node.label}: ${node.value}`
+      : node.label;
+  } else {
+    label.textContent = node.label;
+  }
+
+  wrapper.appendChild(label);
+
+  if (node.children && node.children.length > 0) {
+    const childrenContainer = document.createElement('div');
+    childrenContainer.className = 'tree-children';
+
+    node.children.forEach(child => {
+      childrenContainer.appendChild(createTreeNode(child));
+    });
+
+    wrapper.appendChild(childrenContainer);
+  }
+
+  return wrapper;
+}
