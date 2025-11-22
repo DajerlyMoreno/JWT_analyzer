@@ -51,6 +51,7 @@ export const analyzeToken = async (req, res) => {
 
     // 🧩 Si todo está bien, ahora sí parseamos
     const parsed = parseJwt(token);
+    console.log("DEBUG LEXICAL:", lexicalResult);
 
     const response = {
       token,
