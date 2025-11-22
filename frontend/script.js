@@ -338,84 +338,188 @@ const API_URL = "http://localhost:3000";
         navigator.clipboard.writeText(window.generatedToken);
     }
 
-   async function performAnalysis() {
-  const tokenRaw = document.getElementById('analysisTokenInput').value;
-  const token = (tokenRaw || "").trim();
-  const secretEl = document.getElementById('secretInput');
-  const secret = secretEl ? (secretEl.value || "").trim() : "";
+    async function performAnalysis() {
+      const tokenRaw = document.getElementById('analysisTokenInput').value;
+      const token = (tokenRaw || "").trim();
+      const secretEl = document.getElementById('secretInput');
+      const secret = secretEl ? (secretEl.value || "").trim() : "";
 
-  const outputs = ['lexicalResult', 'syntacticResult', 'semanticResult', 'pumpingResult'];
-  const setAll = (text) => outputs.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = text;
-  });
+      const outputs = ['lexicalResult', 'syntacticResult', 'semanticResult', 'pumpingResult'];
+      const setAll = (text) => outputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+      });
 
-  // 🔹 helper para resetear el árbol cuando hay error
-  const resetTree = (msg = null) => {
-    const container = document.getElementById('derivationTree');
-    if (!container) return;
-    if (msg) {
-      container.innerHTML = `<p class="helper-text">${msg}</p>`;
-    } else {
-      container.innerHTML = '';
-    }
-  };
+      const resetTree = (msg = null) => {
+        const container = document.getElementById('derivationTree');
+        if (!container) return;
+        if (msg) {
+          container.innerHTML = `<p class="helper-text">${msg}</p>`;
+        } else {
+          container.innerHTML = '';
+        }
+      };
 
-  if (!token) {
-    alert('⚠️ Please enter a JWT token to analyze');
-    resetTree('No derivation tree (no token provided).');
-    return;
-  }
+      if (!token) {
+        alert('⚠️ Please enter a JWT token to analyze');
+        resetTree('No derivation tree (no token provided).');
+        return;
+      }
 
-  // Validación mínima antes de llamar al backend
-  if ((token.match(/\./g) || []).length !== 3 - 1) {
-    setAll('❌ Error: el token debe tener exactamente 3 partes separadas por "."');
-    resetTree('No derivation tree (invalid token structure).');
-    return;
-  }
+      // Validación mínima antes de llamar al backend
+      if ((token.match(/\./g) || []).length !== 3 - 1) {
+        setAll('❌ Error: el token debe tener exactamente 3 partes separadas por "."');
+        resetTree('No derivation tree (invalid token structure).');
+        return;
+      }
 
-  setAll('⏳ Analyzing...');
-  resetTree('Building derivation tree...');
+      setAll('⏳ Analyzing...');
+      resetTree('Building derivation tree...');
 
-  try {
-    const res = await fetch(`${API_URL}/api/comprehensive-analysis`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, secret }) // secret puede ir vacío
-    });
-
-    // Si viene 400, leo el json y lanzo el error del backend
-    if (!res.ok) {
-      let errText = `HTTP ${res.status}`;
       try {
-        const errData = await res.json();
-        if (errData && errData.error) errText = errData.error;
-      } catch { /* ignore */ }
-      throw new Error(errText);
+        const res = await fetch(`${API_URL}/api/comprehensive-analysis`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, secret }) // secret puede ir vacío
+        });
+
+        // Si viene 400, leo el json y lanzo el error del backend
+        if (!res.ok) {
+          let errText = `HTTP ${res.status}`;
+          try {
+            const errData = await res.json();
+            if (errData && errData.error) errText = errData.error;
+          } catch { /* ignore */ }
+          throw new Error(errText);
+        }
+
+        const data = await res.json();
+        
+        renderLexicalAnalysis(data.lexical);
+        document.getElementById('syntacticResult').textContent = JSON.stringify(data.syntactic, null, 2);
+        document.getElementById('semanticResult').textContent  = JSON.stringify(data.semantic,  null, 2);
+        document.getElementById('pumpingResult').textContent   = JSON.stringify(data.pumping,   null, 2);
+
+        // 🔹 Aquí integramos el árbol de derivación
+        if (data.syntactic && data.syntactic.derivationTree) {
+          renderDerivationTree(data.syntactic.derivationTree);
+        } else {
+          resetTree('No derivation tree available (syntactic analysis failed).');
+        }
+
+        addToHistory('analysis', data);
+      } catch (error) {
+        setAll(`❌ Error: ${error.message}`);
+        resetTree('No derivation tree due to analysis error.');
+      }
     }
 
-    const data = await res.json();
-    console.log("SYNTACTIC RESPONSE:", data.syntactic);
 
+function renderLexicalAnalysis(lexical) {
+      const container = document.getElementById('lexicalResult');
+      if (!container) return;
 
-    document.getElementById('lexicalResult').textContent   = JSON.stringify(data.lexical,   null, 2);
-    document.getElementById('syntacticResult').textContent = JSON.stringify(data.syntactic, null, 2);
-    document.getElementById('semanticResult').textContent  = JSON.stringify(data.semantic,  null, 2);
-    document.getElementById('pumpingResult').textContent   = JSON.stringify(data.pumping,   null, 2);
+      if (!lexical) {
+        container.textContent = 'No lexical data available.';
+        return;
+      }
 
-    // 🔹 Aquí integramos el árbol de derivación
-    if (data.syntactic && data.syntactic.derivationTree) {
-      renderDerivationTree(data.syntactic.derivationTree);
-    } else {
-      resetTree('No derivation tree available (syntactic analysis failed).');
+      const { tokens = [], summary = {}, automaton } = lexical;
+
+      const hasErrors = tokens.some(t => t.type === 'ERROR' || t.validB64Url === false);
+      const dots = summary.dots ?? 0;
+      const parts = summary.parts ?? 0;
+      const structureOk = (dots === 2 && parts === 3);
+
+      // Construimos HTML en partes
+      let html = '';
+
+      // Resumen corto
+      html += `<div class="text-xs mb-2">`;
+      html += `<div><strong>Dots:</strong> ${dots} &nbsp; | &nbsp; <strong>Parts:</strong> ${parts} &nbsp; | &nbsp;`;
+      html += `<strong>Structure:</strong> ${structureOk ? '<span style="color:#4ade80;">OK</span>' : '<span style="color:#f97373;">Invalid</span>'}</div>`;
+      if (hasErrors) {
+        html += `<div style="color:#f97373; margin-top:4px;">⚠ Detected invalid characters in the token.</div>`;
+      }
+      html += `</div>`;
+
+      // Tabla de tokens
+      html += `
+        <div class="overflow-x-auto">
+          <table class="text-xs w-full border-collapse">
+            <thead>
+              <tr style="border-bottom:1px solid #374151;">
+                <th style="text-align:left; padding:4px 6px;">#</th>
+                <th style="text-align:left; padding:4px 6px;">Type</th>
+                <th style="text-align:left; padding:4px 6px;">Base64URL</th>
+                <th style="text-align:left; padding:4px 6px;">Lexeme</th>
+                <th style="text-align:left; padding:4px 6px;">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      tokens.forEach((t, index) => {
+        const isError = t.type === 'ERROR' || t.validB64Url === false;
+        const isSegment = ['HEADER', 'PAYLOAD', 'SIGNATURE'].includes(t.type);
+        const shortValue = (t.value || '').length > 40
+          ? t.value.slice(0, 40) + '…'
+          : (t.value || '');
+
+        let base64Status = '';
+        if (isSegment) {
+          base64Status = t.validB64Url
+            ? '<span style="color:#4ade80;">✔ valid</span>'
+            : '<span style="color:#f97373;">✘ invalid</span>';
+        } else if (t.type === 'ERROR') {
+          base64Status = '<span style="color:#f97373;">✘ error</span>';
+        }
+
+        html += `
+          <tr style="border-top:1px solid #111827;">
+            <td style="padding:4px 6px;">${index + 1}</td>
+            <td style="padding:4px 6px;">${t.type}</td>
+            <td style="padding:4px 6px;">${base64Status}</td>
+            <td style="padding:4px 6px; font-family:'JetBrains Mono', monospace;">${shortValue || '-'}</td>
+            <td style="padding:4px 6px; color:#9CA3AF;">
+        `;
+
+        if (isError && t.message) {
+          html += t.message;
+        } else if (t.type === 'HEADER') {
+          html += 'First segment (header)';
+        } else if (t.type === 'PAYLOAD') {
+          html += 'Second segment (payload)';
+        } else if (t.type === 'SIGNATURE') {
+          html += 'Third segment (signature)';
+        } else if (t.type === 'ERROR') {
+          html += 'Invalid character in token';
+        } else {
+          html += '';
+        }
+
+        html += `</td></tr>`;
+      });
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      // Info breve del autómata (sin spamear todos los estados/transiciones)
+      if (automaton && automaton.description) {
+        html += `
+          <div class="text-[0.7rem] mt-3" style="color:#9CA3AF;">
+            <strong>Automaton:</strong> ${automaton.description}
+            <br/>
+            <span>Alphabet: ${automaton.alphabet}</span>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
     }
-
-    addToHistory('analysis', data);
-  } catch (error) {
-    setAll(`❌ Error: ${error.message}`);
-    resetTree('No derivation tree due to analysis error.');
-  }
-}
 
     
       
