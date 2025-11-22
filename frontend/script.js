@@ -202,10 +202,14 @@ const API_URL = "http://localhost:3000";
         
         const data = await response.json();
         
-        // Validar que el backend devuelva la estructura correcta
-        if (!data.header || !data.payload || !data.parts) {
-          throw new Error('Token inválido');
+        if (!data.header || !data.payload) {
+  throw new Error('Token inválido: faltan datos decodificados');
+}
+
+        if (!data.parts || !data.parts.signatureB64) {
+          console.warn("⚠️ Advertencia: parts incompletos en la respuesta del backend", data.parts);
         }
+
 
         // Crear las 3 tarjetas solo si la respuesta es válida
         decodeResultContainer.innerHTML = `
