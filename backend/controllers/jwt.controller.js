@@ -8,7 +8,10 @@ import {
   signHmac,
   base64UrlEncode,
   verifyHmac,
+  validateBase64UrlPart
 } from "../services/jwt.service.js";
+import { runJwtAutomaton } from "../services/automata.service.js";
+
 
 /** ========== DECODIFICACIÓN ========== */
 export const analyzeToken = async (req, res) => {
@@ -28,7 +31,7 @@ export const analyzeToken = async (req, res) => {
     }
 
     const [headerB64, payloadB64, signatureB64] = parts;
-
+    
     // ⚠️ Validación estricta BASE64URL antes de decodificar
     if (!validateBase64UrlPart(headerB64)) {
       return res.status(400).json({ error: "HEADER contiene caracteres no permitidos Base64URL." });

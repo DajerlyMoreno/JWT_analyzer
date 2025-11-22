@@ -21,6 +21,7 @@ connectDB();
 
 // Rutas de la API (solo bajo el prefijo /api)
 app.use("/api", jwtRoutes); 
+app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 

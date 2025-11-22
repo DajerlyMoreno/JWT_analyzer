@@ -1,3 +1,4 @@
+//const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
 const API_URL = "http://localhost:3000";
     lucide.createIcons();
 
@@ -202,10 +203,6 @@ const API_URL = "http://localhost:3000";
         
         const data = await response.json();
         
-        // Validar que el backend devuelva la estructura correcta
-        if (!data.header || !data.payload || !data.parts) {
-          throw new Error('Token inválido');
-        }
 
         // Crear las 3 tarjetas solo si la respuesta es válida
         decodeResultContainer.innerHTML = `
@@ -665,7 +662,7 @@ const API_URL = "http://localhost:3000";
               <div class="semantic-empty">
                 <i data-lucide="alert-circle" style="width: 48px; height: 48px; color: var(--neon-red); margin-bottom: 0.5rem;"></i>
                 <p style="font-size: 1rem; font-weight: 600; color: var(--neon-red);">
-                  The semantic analysis was not performed because the syntactic analysis failed.
+                  p
                 </p>
               </div>
             </div>
