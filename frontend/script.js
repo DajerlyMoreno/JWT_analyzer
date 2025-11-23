@@ -416,6 +416,67 @@ const API_URL = "http://localhost:3000";
       }
     }
 
+
+    // ##### FUNCIONES PARA EVITAR DISCREPANCIA ENTRE LA SELECCION DEL ALGORITMO
+    
+    
+    // Utilidad para pretty-print JSON con indentación
+    function formatJson(obj) {
+      return JSON.stringify(obj, null, 4);
+    }
+
+    // Cuando cambia el select de algoritmo → actualizar header.alg
+    function onAlgorithmChange() {
+      const select = document.getElementById("algorithmInput");
+      const headerTextarea = document.getElementById("headerInput");
+      const alg = select.value;
+
+      let headerObj;
+
+      // Intentamos parsear el header actual; si está roto, creamos uno nuevo
+      try {
+        headerObj = JSON.parse(headerTextarea.value || "{}");
+      } catch (e) {
+        headerObj = {};
+      }
+
+      // Forzamos el algoritmo seleccionado
+      headerObj.alg = alg;
+
+      // Si no hay typ, lo ponemos por defecto
+      if (!headerObj.typ) {
+        headerObj.typ = "JWT";
+      }
+
+      // Reescribimos el textarea formateado
+      headerTextarea.value = formatJson(headerObj);
+    }
+
+    // Cuando el usuario edita el header → sincronizar el select si el alg es válido
+    function onHeaderChanged() {
+      const headerTextarea = document.getElementById("headerInput");
+      const select = document.getElementById("algorithmInput");
+
+      let headerObj;
+      try {
+        headerObj = JSON.parse(headerTextarea.value);
+      } catch (e) {
+        // Mientras el JSON esté mal escrito, no hacemos nada
+        return;
+      }
+
+      const alg = headerObj.alg;
+
+      // Solo sincronizamos si es uno de los tres soportados
+      const allowed = ["HS256", "HS384", "HS512"];
+      if (typeof alg === "string" && allowed.includes(alg)) {
+        select.value = alg;
+      }
+    }
+
+
+    //######
+
     function copyToken() {
         if (!window.generatedToken) return alert("No token to copy");
         navigator.clipboard.writeText(window.generatedToken);

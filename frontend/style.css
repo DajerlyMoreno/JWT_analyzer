@@ -247,6 +247,30 @@ body {
 
 .textarea-field { min-height: 120px; resize: vertical; }
 
+
+
+/* 📌 ESTILOS BASE QUE YA TENÍAS APLICADOS A INPUTS, TEXTAREAS Y SELECT */
+.input-field,
+.textarea-field,
+.select-field {
+  width: 100%;
+  padding: 1rem;
+  background: var(--dark-3);
+  border: 2px solid rgba(0, 255, 136, 0.2);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.95rem;
+  transition: all 0.3s;
+  font-family: 'Space Grotesk', monospace;
+}
+
+/* Tamaño por defecto de textarea */
+.textarea-field { 
+  min-height: 120px; 
+  resize: vertical; 
+}
+
+/* Focus igual para todo */
 .input-field:focus,
 .textarea-field:focus,
 .select-field:focus {
@@ -255,6 +279,36 @@ body {
   background: rgba(0, 255, 136, 0.05);
   box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
 }
+
+/* Placeholder */
+.input-field::placeholder,
+.textarea-field::placeholder { 
+  color: #4b5563; 
+}
+
+/* =============================== */
+/*     🎨 ARREGLO DEL SELECT       */
+/* =============================== */
+
+/* Estilo del dropdown (Chrome/Edge) */
+.select-field option {
+  background: var(--dark-3) !important; /* Igual al fondo del input */
+  color: #e0eefe !important;
+  padding: 0.75rem;
+  border: none;
+}
+
+/* Hover de opciones */
+.select-field option:hover {
+  background: rgba(0, 255, 136, 0.12) !important; 
+  color: #fff !important;
+}
+
+/* Solución adicional para navegadores que forzan fondo blanco */
+select {
+  color-scheme: dark; /* Esto le dice al navegador que use menús oscuros */
+}
+
 
 .input-field::placeholder,
 .textarea-field::placeholder { color: #4b5563; }
@@ -602,30 +656,26 @@ body {
 
 /* === CONTENEDOR EXCLUSIVO PARA LEXICAL === */
 
+/* Contenedor del análisis léxico */
 .lexical-container {
-  background: var(--dark-1);
-  border: 2px solid rgba(0, 212, 255, 0.3);
-  border-radius: 12px;
-  padding: 0;
-  margin-top: 1.5rem;
-
   width: 100%;
-  overflow-x: auto;
+  overflow-x: auto;      /* Permite scroll horizontal si algo sobresale */
   overflow-y: visible;
-
-  /* evita que se limite la altura */
-  max-height: none !important;
-  height: auto !important;
+  padding: 0.5rem;
+  box-sizing: border-box;
 }
 
-/* === TABLA LEXICA === */
-
+/* Corrige que la tabla ocupe el espacio correcto */
 .lexical-table {
   width: 100%;
-  min-width: 900px;  /* para que las columnas respiren */
+  min-width: 650px;      /* Evita colapsos y mantiene proporciones */
   border-collapse: collapse;
-  font-size: 0.85rem;
-  background: var(--dark-2);
+}
+
+/* Mantiene las celdas dentro del contenedor */
+.lexical-table th,
+.lexical-table td {
+  white-space: nowrap;   /* Mantiene la forma, no deja que se rompa raro */
 }
 
 .lexical-th {
