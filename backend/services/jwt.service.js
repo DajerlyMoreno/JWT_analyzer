@@ -78,11 +78,12 @@ export function verifyHmac(headerB64, payloadB64, signatureB64, secret, algorith
  *  Análisis Léxico
  *  ====================== */
 export function lexicalAnalysis(token) {
-  const parts = token.split(".");   // divide en segmentos
+  const parts = token.split(".");     // Divide por puntos (incluye vacíos al inicio/fin)
   const table = [];
+  const tokens = [];
   let idx = 1;
 
-  const push = (lexeme, tokenType, estado) => {
+  const pushRow = (lexeme, tokenType, estado) => {
     table.push({
       index: idx++,
       lexeme,
@@ -91,37 +92,43 @@ export function lexicalAnalysis(token) {
     });
   };
 
-  const MAX_SEGMENTS = 3;  // HEADER, PAYLOAD, SIGNATURE
-  let segments = 0;
+  const pushToken = (type, lexeme) => {
+    tokens.push({ type, lexeme });
+  };
 
-  // 👉 Solo analizamos como máximo 3 segmentos (JWT estándar)
-  for (let i = 0; i < parts.length && segments < MAX_SEGMENTS; i++) {
-    const part = parts[i];
+  // Recorremos TODOS los "bloques" separados por '.'
+  parts.forEach((part, i) => {
 
     // --- SEGMENTO ---
     if (part && part !== "") {
+      // Hay contenido, validamos Base64URL
       if (!validateBase64UrlPart(part)) {
-        push(part, "SEGMENT", "❌ ERROR Base64URL inválido");
+        pushRow(part, "SEGMENT", "❌ ERROR Base64URL inválido");
       } else {
-        push(part, "SEGMENT", "🟢 Válido");
+        pushRow(part, "SEGMENT", "🟢 Válido");
       }
+      // Sintácticamente sigue siendo un SEGMENT, aunque léxicamente tenga error
+      pushToken("SEGMENT", part);
     } else {
-      push("(vacío)", "SEGMENT", "❌ ERROR BLOQUE VACÍO");
+      // Bloque vacío → error léxico de segmento vacío
+      pushRow("(vacío)", "SEGMENT", "❌ ERROR BLOQUE VACÍO");
+      pushToken("SEGMENT", "(vacío)");
     }
 
-    segments++;
-
-    // --- DOT entre segmentos (solo 2 puntos) ---
-    if (segments < MAX_SEGMENTS && i < parts.length - 1) {
-      push(".", "DOT", "🟢 Válido");
+    // --- DOT (el punto que separa este bloque del siguiente) ---
+    if (i < parts.length - 1) {
+      pushRow(".", "DOT", "🟢 Válido");
+      pushToken("DOT", ".");
     }
-  }
-  
+  });
+
   // --- EOF ---
-  push("EOF", "EOF", "—");
+  pushRow("EOF", "EOF", "—");
+  pushToken("EOF", "EOF");
 
-  return { table };
+  return { table, tokens };
 }
+
 
 
 /** ======================
@@ -129,7 +136,7 @@ export function lexicalAnalysis(token) {
  *  ====================== */
 // services/jwt.service.js
 
-export function syntacticAnalysis(parsed, rawToken = null) {
+/*export function syntacticAnalysis(parsed, rawToken = null) {
   const grammar = `
 S  -> J
 J  -> H "." P "." Sg
@@ -249,7 +256,7 @@ Sg -> Base64url(firma)
     automaton   // 👈 para mostrar en el front la traza del AFD
   };
 }
-
+*/
 
 
 /* ======================================================

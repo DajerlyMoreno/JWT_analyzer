@@ -627,86 +627,85 @@ const API_URL = "http://localhost:3000";
 
 
     function renderSyntacticPanel(syntactic) {
-      const container = document.getElementById('syntacticResult');
-    
+      const container = document.getElementById("syntacticResult");
+      if (!container) return;
+
       if (!syntactic) {
-        container.textContent = 'No syntactic data';
+        container.textContent = "No syntactic data";
         return;
       }
-    
+
+      const isValid = syntactic.isValid;
+      const errors = syntactic.errors || [];
       const segments = syntactic.segments || {};
-      const headerJson = segments.header
-        ? escapeHtml(JSON.stringify(segments.header, null, 2))
-        : '—';
-      const payloadJson = segments.payload
-        ? escapeHtml(JSON.stringify(segments.payload, null, 2))
-        : '—';
-    
-      const sigRaw = segments.signatureRaw || segments.signatureB64 || '—';
-    
-      // Si el backend mandó "derivation", la usamos, si no la armamos rápido
-      let derivLines = syntactic.derivation && syntactic.derivation.length
-        ? syntactic.derivation
-        : [
-            'S',
-            'J',
-            'H "." P "." Sg',
-            'Base64url(JSON) "." Base64url(JSON) "." Base64url(firma)',
-            `${segments.headerB64 || '???'} "." ${segments.payloadB64 || '???'} "." ${segments.signatureB64 || '???'}`
-          ];
-    
-      const derivHtml = derivLines
-        .map((line, i) => (i === 0 ? escapeHtml(line) : '⇒ ' + escapeHtml(line)))
-        .join('<br>');
-    
-      const errorsHtml = (syntactic.errors && syntactic.errors.length)
-        ? `<ul class="syntactic-errors">
-            ${syntactic.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
-           </ul>`
-        : '<p class="syntactic-ok">Sin errores sintácticos.</p>';
-    
+
+      const h = segments.headerB64 || "(no header)";
+      const p = segments.payloadB64 || "(no payload)";
+      const s = segments.signatureB64 || "(no signature)";
+
       container.innerHTML = `
-        <div class="syntactic-wrapper">
-          <div class="syntactic-summary">
-            <span class="syntactic-status syntactic-status-${syntactic.isValid ? 'ok' : 'error'}">
-              ${syntactic.isValid ? 'Válido' : 'Inválido'}
+        <div class="syntactic-box">
+
+          <div class="synt-header-row">
+            <span class="synt-status ${isValid ? "ok" : "error"}">
+              ${isValid ? "🟢 Válido" : "🔴 Inválido"}
             </span>
+            ${
+              errors.length === 0
+                ? `<span class="synt-subtext">Sin errores sintácticos.</span>`
+                : ""
+            }
           </div>
-    
-          ${errorsHtml}
-    
-          <div class="syntactic-grid">
-            <!-- IZQUIERDA: Árbol / derivación -->
-            <div class="syntactic-left">
-              <h4 class="syntactic-title">Árbol de derivación</h4>
-              <div class="syntactic-tree">
-                ${derivHtml}
+
+          ${
+            errors.length > 0
+              ? `
+          <div class="synt-section">
+            <h4>Errores sintácticos</h4>
+            <ul class="synt-error-list">
+              ${errors.map(e => `<li>${e}</li>`).join("")}
+            </ul>
+          </div>`
+              : ""
+          }
+
+          <div class="synt-section">
+            <h4>Árbol de derivación</h4>
+            <pre class="code-block tree-block">${
+              syntactic.asciiTree || "Árbol no disponible"
+            }</pre>
+          </div>
+
+          <div class="synt-section">
+            <h4>Estructura reconocida</h4>
+            <pre class="code-block">
+    S  → J
+    J  → H "." P "." Sg
+    H, P, Sg → SEGMENT (Base64URL)
+            </pre>
+          </div>
+
+          <div class="synt-section">
+            <h4>Segmentos</h4>
+            <div class="segment-grid">
+              <div class="segment-card">
+                <div class="segment-label">HEADER</div>
+                <div class="segment-value">${h}</div>
+              </div>
+              <div class="segment-card">
+                <div class="segment-label">PAYLOAD</div>
+                <div class="segment-value">${p}</div>
+              </div>
+              <div class="segment-card">
+                <div class="segment-label">SIGNATURE</div>
+                <div class="segment-value">${s}</div>
               </div>
             </div>
-    
-            <!-- DERECHA: Contenido header / payload / firma -->
-            <div class="syntactic-right">
-              <h4 class="syntactic-title">Contenido del token</h4>
-    
-              <div class="syntactic-block">
-                <div class="syntactic-label">Header (JSON)</div>
-                <pre class="syntactic-pre">${headerJson}</pre>
-              </div>
-    
-              <div class="syntactic-block">
-                <div class="syntactic-label">Payload (JSON)</div>
-                <pre class="syntactic-pre">${payloadJson}</pre>
-              </div>
-    
-              <div class="syntactic-block">
-                <div class="syntactic-label">Firma (Base64URL)</div>
-                <code class="syntactic-code">${escapeHtml(sigRaw)}</code>
-              </div>
-            </div>
           </div>
+
         </div>
       `;
-    }    
+    }
 
     async function loadHistoryFromServer() {
       try {

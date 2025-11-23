@@ -3,7 +3,7 @@ import History from "../models/History.js";
 import {
   parseJwt,
   lexicalAnalysis,
-  syntacticAnalysis,
+  //syntacticAnalysis,
   semanticAnalysis,
   signHmac,
   base64UrlEncode,
@@ -11,6 +11,7 @@ import {
   validateBase64UrlPart
 } from "../services/jwt.service.js";
 import { runJwtAutomaton } from "../services/automata.service.js";
+import { runSyntacticParserFromLexical } from "../services/jwtParser.service.js";
 
 
 /** ========== DECODIFICACIÓN ========== */
@@ -82,40 +83,40 @@ export const analyzeToken = async (req, res) => {
 
 
 /** ========== ANÁLISIS COMPLETO  ========== */
-// ⚠️ Tu frontend llama a /api/comprehensive-analysis, así que en las rutas
-// asegúrate de tener algo como:
-// router.post("/api/comprehensive-analysis", fullAnalysis);
+
 export const fullAnalysis = async (req, res) => {
   const { token, secret } = req.body;
 
-  if (!token || typeof token !== "string") {
-    return res.status(400).json({ error: "Debes enviar un token." });
-  }
-
-  // 1) Siempre construimos la tabla léxica
+  // 1) LÉXICO
   const lexical = lexicalAnalysis(token);
 
   let parsed = null;
-  let syntactic = { grammar: "", isValid: false, errors: [] };
+  let syntactic = null;
   let semantic = null;
 
-  try {
-    // 2) Intentamos parsear
-    parsed = parseJwt(token);
+  // 2) SINTÁCTICO (parser formal con la GLC)
+  syntactic = runSyntacticParserFromLexical(lexical);
 
-    // Le pasamos también el token crudo para que el autómata pueda usarse
-    syntactic = syntacticAnalysis(parsed, token);
+  // 3) Intentar decodificar HEADER/PAYLOAD solo si al menos
+  //    tenemos segmentos estructurales del parser
+  if (syntactic && syntactic.segments) {
+    try {
+      parsed = parseJwt(token);
 
-    // 3) Análisis semántico con secret (para verificar firma)
-    semantic = semanticAnalysis(parsed, syntactic.isValid, secret);
-  } catch (e) {
-    // Si algo truena (JSON inválido, etc.) lo agregamos como error sintáctico
-    syntactic.errors.push(e.message);
+    } catch (e) {
+      syntactic.errors.push(
+        "Error al decodificar HEADER/PAYLOAD como JSON: " + e.message
+      );
+    }
   }
 
-  // 4) Respondemos SIEMPRE con la estructura completa
+  // 4) SEMÁNTICO (solo si tenemos algún parsed; si no, semantic dirá skipped)
+  semantic = semanticAnalysis(parsed, syntactic?.isValid === true, secret);
+
+  // 5) Siempre respondemos con la estructura completa
   res.json({ lexical, syntactic, semantic });
 };
+
 
 
 /** ========== CODIFICACIÓN ========== */

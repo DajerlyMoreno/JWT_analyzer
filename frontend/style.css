@@ -1414,6 +1414,74 @@ select {
     color: #bbf7d0;
     font-weight: 600;
   }
+  .synt-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.synt-status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.synt-status.ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.7);
+}
+
+.synt-status.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.7);
+}
+
+.synt-subtext {
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+
+.synt-error-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+  color: #fecaca;
+  font-size: 0.9rem;
+}
+
+.tree-block {
+  text-align: left;
+}
+
+.segment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.segment-card {
+  background: #020617;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  font-size: 0.8rem;
+}
+
+.segment-label {
+  font-weight: 600;
+  color: #e5e7eb;
+  margin-bottom: 0.25rem;
+}
+
+.segment-value {
+  word-break: break-all;
+  color: #9ca3af;
+}
+
+
 
 
 
