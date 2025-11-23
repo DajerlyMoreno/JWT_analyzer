@@ -80,11 +80,19 @@ export const analyzeToken = async (req, res) => {
   }
 };
 
+
 /** ========== ANÁLISIS COMPLETO  ========== */
+// ⚠️ Tu frontend llama a /api/comprehensive-analysis, así que en las rutas
+// asegúrate de tener algo como:
+// router.post("/api/comprehensive-analysis", fullAnalysis);
 export const fullAnalysis = async (req, res) => {
   const { token, secret } = req.body;
 
-  // 📌 1) Siempre construimos la tabla léxica
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({ error: "Debes enviar un token." });
+  }
+
+  // 1) Siempre construimos la tabla léxica
   const lexical = lexicalAnalysis(token);
 
   let parsed = null;
@@ -92,17 +100,21 @@ export const fullAnalysis = async (req, res) => {
   let semantic = null;
 
   try {
-    // 📌 2) Intentamos parsear, pero si falla NO devolvemos 400
+    // 2) Intentamos parsear
     parsed = parseJwt(token);
-    syntactic = syntacticAnalysis(parsed);
-    semantic = semanticAnalysis(parsed, syntactic.isValid,  secret);
+
+    // Le pasamos también el token crudo para que el autómata pueda usarse
+    syntactic = syntacticAnalysis(parsed, token);
+
+    // 3) Análisis semántico con secret (para verificar firma)
+    semantic = semanticAnalysis(parsed, syntactic.isValid, secret);
   } catch (e) {
-    // 📌 3) Metemos el error como error sintáctico
+    // Si algo truena (JSON inválido, etc.) lo agregamos como error sintáctico
     syntactic.errors.push(e.message);
   }
 
-  // 📌 4) Respondemos SIEMPRE con la estructura completa
-  res.json({ lexical, syntactic, semantic});
+  // 4) Respondemos SIEMPRE con la estructura completa
+  res.json({ lexical, syntactic, semantic });
 };
 
 
@@ -134,11 +146,35 @@ export const encodeToken = async (req, res) => {
   }
 };
 
+
 /** ========== VERIFICACIÓN (firma) – NO GUARDAR EN BD ========== */
 export const verifySignature = async (req, res) => {
   try {
     const { token, secret } = req.body;
+
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ error: "Debes enviar un token para verificar la firma." });
+    }
+
+    if (!secret || typeof secret !== "string") {
+      return res.status(400).json({ error: "Debes enviar el secret para verificar la firma." });
+    }
+
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      return res.status(400).json({
+        error: `El token debe tener 3 segmentos (HEADER.PAYLOAD.SIGNATURE). Se detectaron: ${parts.length}`
+      });
+    }
+
+    // Parseamos JWT
     const parsed = parseJwt(token);
+    if (!parsed || !parsed.header) {
+      return res.status(400).json({
+        error: "No se pudo parsear el token o el HEADER es inválido."
+      });
+    }
+
     const { headerB64, payloadB64, signatureB64 } = parsed.parts;
     const alg = parsed.header?.alg || "HS256";
 
@@ -146,12 +182,13 @@ export const verifySignature = async (req, res) => {
 
     const response = { algorithm: alg, signatureVerified: ok };
 
-
+    // 😶‍🌫️ No guardamos nada en BD, solo respondemos
     res.json(response);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
+
 
 /** ========== HISTORIAL ========== */
 export const getHistory = async (req, res) => {
@@ -159,10 +196,11 @@ export const getHistory = async (req, res) => {
   res.json(data);
 };
 
+
 /** ========== LIMPIAR HISTORIAL ========== */
 export const clearHistory = async (req, res) => {
   try {
-    console.log("🗑️ DELETE /api/history llamado"); // <--- para verificar que entra aquí
+    console.log("🗑️ DELETE /api/history llamado");
 
     const result = await History.deleteMany({});
     console.log("🗑️ Documentos borrados:", result.deletedCount);

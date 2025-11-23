@@ -78,8 +78,8 @@ export function verifyHmac(headerB64, payloadB64, signatureB64, secret, algorith
  *  Análisis Léxico
  *  ====================== */
 export function lexicalAnalysis(token) {
-  const parts = token.split(".");     // Divide por puntos (incluye vacíos al inicio/fin)
-  const table= [];
+  const parts = token.split(".");   // divide en segmentos
+  const table = [];
   let idx = 1;
 
   const push = (lexeme, tokenType, estado) => {
@@ -91,34 +91,38 @@ export function lexicalAnalysis(token) {
     });
   };
 
-  // Recorremos TODOS los "bloques" separados por '.'
-  parts.forEach((part, i) => {
+  const MAX_SEGMENTS = 3;  // HEADER, PAYLOAD, SIGNATURE
+  let segments = 0;
+
+  // 👉 Solo analizamos como máximo 3 segmentos (JWT estándar)
+  for (let i = 0; i < parts.length && segments < MAX_SEGMENTS; i++) {
+    const part = parts[i];
 
     // --- SEGMENTO ---
     if (part && part !== "") {
-      // Hay contenido, validamos Base64URL
       if (!validateBase64UrlPart(part)) {
         push(part, "SEGMENT", "❌ ERROR Base64URL inválido");
       } else {
         push(part, "SEGMENT", "🟢 Válido");
       }
     } else {
-      // Bloque vacío → error léxico de segmento vacío
       push("(vacío)", "SEGMENT", "❌ ERROR BLOQUE VACÍO");
     }
 
-    // --- DOT (el punto que separa este bloque del siguiente) ---
-    if (i < parts.length - 1) {
-      // Siempre que haya otro bloque después, hubo un punto aquí
+    segments++;
+
+    // --- DOT entre segmentos (solo 2 puntos) ---
+    if (segments < MAX_SEGMENTS && i < parts.length - 1) {
       push(".", "DOT", "🟢 Válido");
     }
-  });
-
+  }
+  
   // --- EOF ---
   push("EOF", "EOF", "—");
 
   return { table };
 }
+
 
 /** ======================
  *  Análisis Sintáctico (verificador CFG)
@@ -150,6 +154,16 @@ Sg -> Base64url(firma)
     };
   }
 
+  // 🧩 Validación de estructura: cantidad de segmentos
+  if (rawToken) {
+    const rawParts = rawToken.split(".");
+    if (rawParts.length !== 3) {
+      errors.push(
+        `Estructura inválida: el token tiene ${rawParts.length} segmentos. Un JWT válido debe tener exactamente 3 (HEADER.PAYLOAD.SIGNATURE).`
+      );
+    }
+  }
+  
   // ✅ Ejecutar el autómata sobre el token crudo (si lo pasas)
   if (rawToken) {
     automaton = runJwtAutomaton(rawToken);

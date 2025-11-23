@@ -81,6 +81,39 @@
             <i data-lucide="microscope" class="w-5 h-5"></i>
             <span>View Complete Analysis</span>
           </button>
+
+              <!-- JWT SIGNATURE VERIFICATION (OPCIONAL) -->
+          <div class="card" style="margin-top: 1.5rem;">
+            <h3 class="card-title" style="margin-bottom: 0.5rem;">
+              <i data-lucide="shield-check" class="w-6 h-6"></i>
+              JWT Signature Verification (optional)
+            </h3>
+            <p class="card-description" style="margin-bottom: 1rem;">
+              Enter the secret used to sign this JWT. The token is the last one decoded en este módulo.
+            </p>
+
+            <div class="input-group">
+              <label class="input-label">Secret</label>
+             <textarea
+                id="decoderSecretInput"
+                class="textarea-field small-textarea"
+                placeholder="a-string-secret-at-least-256-bits-long"
+              ></textarea>
+
+            </div>
+
+            <button class="btn-primary" onclick="verifySignatureFromDecoder()">
+              <i data-lucide="check-circle" class="w-5 h-5"></i>
+              <span>Verify Signature</span>
+            </button>
+
+            <div id="decoderSignatureResult" class="result-box" style="margin-top: 1rem;">
+              Waiting for secret...
+            </div>
+          </div>
+
+
+
         </div>
       </section>
 

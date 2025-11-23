@@ -202,9 +202,13 @@ const API_URL = "http://localhost:3000";
         });
         
         const data = await response.json();
-        
 
-        // Crear las 3 tarjetas solo si la respuesta es válida
+        // 🔴 Si el backend responde 400, mostramos el mensaje de error
+        if (!response.ok) {
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        // ✅ Solo si todo fue bien, construimos las tarjetas
         decodeResultContainer.innerHTML = `
           <div class="decode-card">
             <div class="decode-card-header">
@@ -237,10 +241,11 @@ const API_URL = "http://localhost:3000";
         lucide.createIcons();
 
       } catch (error) {
-        decodeResultContainer.innerHTML = `<div class="error-box">❌ Token inválido: ${error.message}</div>`;
+        decodeResultContainer.innerHTML = `<div class="error-box">❌ ${error.message}</div>`;
         viewAnalysisBtn.classList.add('hidden');
       }
     }
+
 
     async function performBackgroundAnalysis(token) {
       try {
@@ -292,6 +297,61 @@ const API_URL = "http://localhost:3000";
         alert(`❌ ${e.message}`);
       }
     }
+
+    async function verifySignatureFromDecoder() {
+      // Usamos el último token decodificado en el Decoder
+      const token =
+        (currentAnalyzedToken && currentAnalyzedToken.trim()) ||
+        document.getElementById("tokenInput").value.trim();
+
+      const secret = document
+        .getElementById("decoderSecretInput")
+        .value.trim();
+
+      const resultBox = document.getElementById("decoderSignatureResult");
+
+      if (!token) {
+        resultBox.textContent = "⚠️ First decode a JWT token in this tab.";
+        return;
+      }
+
+      if (!secret) {
+        resultBox.textContent = "⚠️ Please enter the secret to verify the signature.";
+        return;
+      }
+
+      resultBox.textContent = "⏳ Verifying signature...";
+
+      try {
+        const res = await fetch(`${API_URL}/api/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, secret }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        if (data.signatureVerified) {
+          // Firma válida
+          resultBox.textContent = `✅ Signature VALID (alg: ${data.algorithm || "unknown"})`;
+          resultBox.classList.remove("error-box");
+          resultBox.classList.add("success-box");
+        } else {
+          // Firma inválida
+          resultBox.textContent = `❌ Signature INVALID (alg: ${data.algorithm || "unknown"})`;
+          resultBox.classList.remove("success-box");
+          resultBox.classList.add("error-box");
+        }
+      } catch (err) {
+        resultBox.textContent = `❌ Error verifying signature: ${err.message}`;
+        resultBox.classList.remove("success-box");
+        resultBox.classList.add("error-box");
+      }
+    }
+
     
 
     async function encodeToken() {
@@ -407,13 +467,67 @@ const API_URL = "http://localhost:3000";
     
     function renderLexicalTable(lexical) {
       const container = document.getElementById('lexicalResult');
-    
-      if (!lexical || !Array.isArray(lexical.table) || lexical.table.length === 0) {
+
+      if (!lexical || !Array.isArray(lexical.table)) {
         container.textContent = 'No lexical data';
         return;
       }
-    
-      const rowsHtml = lexical.table.map(row => `
+
+      const table = lexical.table;
+
+      // Token original escrito en el área de análisis
+      const tokenRaw = document.getElementById("analysisTokenInput").value.trim();
+      const parts = tokenRaw ? tokenRaw.split(".") : [];
+
+      // 🔍 ¿Algún SEGMENT tiene error de Base64URL u otro error?
+      const hasSegmentError = table.some(
+        (row) =>
+          row.token === "SEGMENT" &&
+          typeof row.estado === "string" &&
+          row.estado.includes("ERROR")
+      );
+
+      let structureMessage = "";
+      let structureClass = "";
+
+      // ==============================
+      //  LÓGICA DEL MENSAJE RESUMEN
+      // ==============================
+      if (!tokenRaw) {
+        structureMessage = "Ingresa un JWT para realizar el análisis léxico.";
+        structureClass = "lexical-error-box";
+      } else if (parts.length < 3) {
+        structureMessage =
+          `❌ Estructura inválida: el JWT tiene SOLO ${parts.length} segmentos. ` +
+          `Debe tener exactamente 3 (HEADER.PAYLOAD.SIGNATURE).`;
+        if (hasSegmentError) {
+          structureMessage +=
+            " Además, se detectaron segmentos con contenido Base64URL inválido.";
+        }
+        structureClass = "lexical-error-box";
+      } else if (parts.length > 3) {
+        structureMessage =
+          `❌ Estructura inválida: el JWT tiene ${parts.length} segmentos. ` +
+          `Un JWT válido solo debe tener 3 (HEADER.PAYLOAD.SIGNATURE).`;
+        if (hasSegmentError) {
+          structureMessage +=
+            " También se encontraron segmentos con Base64URL inválido.";
+        }
+        structureClass = "lexical-error-box";
+      } else {
+        // parts.length === 3
+        if (hasSegmentError) {
+          structureMessage =
+            "❌ Estructura correcta (3 segmentos), PERO al menos uno de los segmentos no es Base64URL válido. El token es léxicamente inválido.";
+          structureClass = "lexical-error-box";
+        } else {
+          structureMessage =
+            "✔️ Estructura y contenido válidos: el JWT tiene 3 segmentos y todos los bloques cumplen Base64URL.";
+          structureClass = "lexical-ok-box";
+        }
+      }
+
+      const rowsHtml = table.map(row => `
         <tr>
           <td class="lexical-td index">${row.index}</td>
           <td class="lexical-td lexeme">
@@ -427,8 +541,12 @@ const API_URL = "http://localhost:3000";
           <td class="lexical-td estado">${row.estado}</td>
         </tr>
       `).join('');
-    
+
       container.innerHTML = `
+        <div class="${structureClass}" style="margin-bottom: 1rem;">
+          ${structureMessage}
+        </div>
+
         <table class="lexical-table">
           <thead>
             <tr>
@@ -444,6 +562,8 @@ const API_URL = "http://localhost:3000";
         </table>
       `;
     }
+
+
 
     function renderSyntacticPanel(syntactic) {
       const container = document.getElementById('syntacticResult');

@@ -1332,4 +1332,40 @@ body {
     font-size: 0.7rem;
     padding: 0.4rem;
   }
+  .success-box {
+    border: 1px solid #16a34a;
+    background: rgba(22, 163, 74, 0.1);
+    color: #bbf7d0;
+  }
+
+  .error-box {
+    border: 1px solid #dc2626;
+    background: rgba(220, 38, 38, 0.08);
+    color: #fecaca;
+  }
+  .small-textarea {
+    height: 32px !important;
+    resize: none;
+  }
+ .lexical-error-box {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #dc2626;
+    background: rgba(220, 38, 38, 0.15);
+    color: #fca5a5;
+    font-weight: 600;
+  }
+
+  .lexical-ok-box {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #16a34a;
+    background: rgba(22,163,74,0.15);
+    color: #bbf7d0;
+    font-weight: 600;
+  }
+
+
+
+
 }
