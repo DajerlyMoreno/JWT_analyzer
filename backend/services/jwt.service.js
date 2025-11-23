@@ -163,7 +163,7 @@ Sg -> Base64url(firma)
       );
     }
   }
-  
+
   // ✅ Ejecutar el autómata sobre el token crudo (si lo pasas)
   if (rawToken) {
     automaton = runJwtAutomaton(rawToken);
@@ -318,15 +318,7 @@ export function semanticAnalysis(parsed, syntacticIsValid, secret = null) {
   const errors = [];
   const warnings = [];
 
-  /* ------------------------
-   * Claims obligatorios (TU TOKEN)
-   * ------------------------ */
-  const REQUIRED_CLAIMS = ["sub", "name", "admin", "iat"];
 
-  REQUIRED_CLAIMS.forEach(c => {
-    if (payload[c] === undefined)
-      errors.push(`Claim obligatorio '${c}' ausente`);
-  });
 
   /* ------------------------
    * Validación del HEADER
@@ -343,16 +335,48 @@ export function semanticAnalysis(parsed, syntacticIsValid, secret = null) {
   /* ------------------------
    * Claims Estándar (tipos)
    * ------------------------ */
+  // Tipos estándar de tiempo: exp, nbf, iat
   const timeErrs = validateTimeClaims(payload);
   errors.push(...timeErrs);
 
-  ["sub", "name"].forEach(k => {
-    if (payload[k] !== undefined && typeof payload[k] !== "string")
+  // Strings estándar
+  ["iss", "sub", "name", "jti"].forEach(k => {
+    if (payload[k] !== undefined && typeof payload[k] !== "string") {
       errors.push(`${k} debe ser string`);
+    }
   });
 
-  if (payload.admin !== undefined && typeof payload.admin !== "boolean")
+  // aud puede ser string o array de strings
+  if (payload.aud !== undefined) {
+    const aud = payload.aud;
+    const ok =
+      typeof aud === "string" ||
+      (Array.isArray(aud) && aud.every(x => typeof x === "string"));
+    if (!ok) {
+      errors.push("aud debe ser string o arreglo de strings");
+    }
+  }
+
+  // Claim privado admin: solo validar tipo si existe
+  if (payload.admin !== undefined && typeof payload.admin !== "boolean") {
     errors.push("admin debe ser boolean (true/false)");
+  }
+  
+  // ⚠ Claims recomendados (NO obligatorios)
+  if (payload.sub === undefined) {
+    warnings.push(
+      "El token no incluye 'sub' (Subject). Es opcional según la RFC 7519, " +
+      "pero muchas APIs lo usan para identificar al usuario."
+    );
+  }
+
+  if (payload.exp === undefined) {
+    warnings.push(
+      "El token no incluye 'exp' (Expiration Time). Es opcional, " +
+      "pero en tokens de autenticación se recomienda fuertemente " +
+      "tener fecha de expiración."
+    );
+  }
 
   /* ------------------------
    * Verificación criptográfica (opcional)
