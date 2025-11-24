@@ -8,7 +8,6 @@ import {
 import {
   parseJwt,
   lexicalAnalysis,
-  syntacticAnalysis,
   semanticAnalysis,
   signHmac,
   base64UrlEncode,
@@ -16,6 +15,7 @@ import {
   validateBase64UrlPart
 } from "../services/jwt.service.js";
 import { runJwtAutomaton } from "../services/automata.service.js";
+import { runSyntacticParserFromLexical } from "../services/jwtParser.service.js";
 
 
 /** ========== DECODIFICACIÓN ========== */
@@ -57,16 +57,30 @@ export const analyzeToken = async (req, res) => {
       });
     }
 
-    // 🧩 Si todo está bien, ahora sí parseamos
     const parsed = parseJwt(token);
-
-    const response = {
-      token,
-      header: parsed.header,
-      payload: parsed.payload,
-      parts: parsed.parts,
-      automaton
-    };
+    
+       const response = {
+          token,
+    
+          // Datos decodificados visibles en el front
+          header: parsed.header,
+          payload: parsed.payload,
+          signature: parsed.signature,
+    
+          // Segmentos
+          parts: parsed.parts,
+    
+          // Texto JSON original (string, para mostrarlo bonito)
+          headerJson: parsed.headerJson,
+          payloadJson: parsed.payloadJson,
+    
+          // Árboles sintácticos JSON (para el futuro árbol visual)
+          headerJsonTree: parsed.headerJsonTree,
+          payloadJsonTree: parsed.payloadJsonTree,
+    
+          // Autómata de estructura
+          automaton
+        };
 
     // 📝 Guardamos en historial (solo decodificación)
     try {
@@ -88,29 +102,90 @@ export const analyzeToken = async (req, res) => {
   }
 };
 
+
 /** ========== ANÁLISIS COMPLETO  ========== */
 export const fullAnalysis = async (req, res) => {
   const { token, secret } = req.body;
 
-  // 📌 1) Siempre construimos la tabla léxica
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({ error: "Debes enviar un token." });
+  }
+  /* ============================================================
+   * 1. ANÁLISIS LÉXICO
+   * ============================================================ */
   const lexical = lexicalAnalysis(token);
 
-  let parsed = null;
-  let syntactic = { grammar: "", isValid: false, errors: [] };
-  let semantic = null;
+  // Detectar errores léxicos reales
+  const hasLexicalErrors = lexical.table.some(
+    row =>
+      row.token === "SEGMENT" &&
+      typeof row.estado === "string" &&
+      row.estado.includes("ERROR")
+  );
 
+  /* ============================================================
+   * 2. PARSEO BÁSICO JWT (BASE64 + JSON)
+   * ============================================================ */
+  let parsed = null;
   try {
-    // 📌 2) Intentamos parsear, pero si falla NO devolvemos 400
     parsed = parseJwt(token);
-    syntactic = syntacticAnalysis(parsed, token);
-    semantic = semanticAnalysis(parsed, syntactic.isValid,  secret);
   } catch (e) {
-    // 📌 3) Metemos el error como error sintáctico
-    syntactic.errors.push(e.message);
+    return res.json({
+      lexical,
+      syntactic: {
+        isValid: false,
+        errors: ["Error al decodificar JSON (HEADER o PAYLOAD): " + e.message],
+        derivation: [],
+        asciiTree: null,
+        segments: null,
+        jsonTrees: {}
+      },
+      semantic: {
+        skipped: true,
+        valid: false,
+        errors: ["No se ejecutó semántica por error de decodificación."],
+        warnings: [],
+        signatureVerified: null,
+        symbolTable: { header: {}, payload: {} }
+      }
+    });
   }
 
-  // 📌 4) Respondemos SIEMPRE con la estructura completa
-  res.json({ lexical, syntactic, semantic});
+  /* ============================================================
+   * 3. ANÁLISIS SINTÁCTICO FORMAL DEL JWT
+   * ============================================================ */
+  const syntactic = runSyntacticParserFromLexical(lexical);
+
+  // Si existen errores léxicos → el parser es inválido
+  if (hasLexicalErrors) {
+    syntactic.isValid = false;
+    syntactic.errors = syntactic.errors || [];
+    syntactic.errors.push(
+      "Existen errores léxicos: segmentos vacíos o Base64URL inválido."
+    );
+  }
+
+  /* ============================================================
+   * 4. Adjuntar árboles JSON formales del nuevo parser JSON
+   * ============================================================ */
+  syntactic.jsonTrees = {
+    header: parsed.headerJsonTree,
+    payload: parsed.payloadJsonTree
+  };
+
+  /* ============================================================
+   * 5. ANÁLISIS SEMÁNTICO → SOLO SI NO HAY ERRORES
+   * ============================================================ */
+  const semantic = semanticAnalysis(parsed, syntactic.isValid, secret);
+
+  /* ============================================================
+   * 6. RESPUESTA FINAL
+   * ============================================================ */
+  return res.json({
+    lexical,
+    syntactic,
+    semantic
+  });
 };
 
 

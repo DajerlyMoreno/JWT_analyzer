@@ -4,10 +4,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
 import jwtRoutes from "./routes/jwt.routes.js";
+import mongoose from "mongoose";
 
 dotenv.config();
 
 const app = express();
+const URI = process.env.MONGO_URI;
 
 // CORS
 app.use(cors({
@@ -21,6 +23,7 @@ app.use(express.json());
 // 🔌 Conexión a MongoDB (segura, no revienta Lambda si falla)
 connectDB();
 
+
 // Rutas de la API
 app.use("/api", jwtRoutes);
 
@@ -29,4 +32,9 @@ app.get("/", (req, res) => {
   res.json({ message: "JWT Analyzer API online" });
 });
 
+// Puerto de escucha
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+});
 export default app;

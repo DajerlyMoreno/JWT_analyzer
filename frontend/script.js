@@ -843,7 +843,7 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
               <div class="semantic-empty">
                 <i data-lucide="alert-circle" style="width: 48px; height: 48px; color: var(--neon-red); margin-bottom: 0.5rem;"></i>
                 <p style="font-size: 1rem; font-weight: 600; color: var(--neon-red);">
-                  p
+                  The semantic analysis was skipped due to previous errors in lexical or syntactic analysis.
                 </p>
               </div>
             </div>
