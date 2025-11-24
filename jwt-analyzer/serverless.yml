@@ -1,0 +1,56 @@
+org: jdmg1
+app: jwtanalyzer
+service: jwt-analyzer
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:Scan
+            - dynamodb:DeleteItem
+          Resource: arn:aws:dynamodb:*:*:table/HistoryTable
+
+
+
+  environment:
+    MONGO_URI: ${env:MONGO_URI}
+
+  httpApi:
+    cors:
+      allowedOrigins:
+        - 'http://127.0.0.1:5500'
+        - 'https://dajerlymoreno.github.io'
+        
+      allowedMethods:
+        - GET
+        - POST
+        - OPTIONS
+      allowedHeaders:
+        - Content-Type
+      allowCredentials: false
+
+functions:
+  api:
+    handler: handler.handler
+    events:
+      - httpApi: '*'
+
+resources:
+  Resources:
+    HistoryTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: HistoryTable
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST

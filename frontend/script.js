@@ -1,5 +1,5 @@
-//const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
-const API_URL = "http://localhost:3000";
+const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
+//const API_URL = "http://localhost:3000";
     lucide.createIcons();
 
     let history = [];
