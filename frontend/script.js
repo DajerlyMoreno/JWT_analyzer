@@ -202,9 +202,13 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
         });
         
         const data = await response.json();
-        
 
-        // Crear las 3 tarjetas solo si la respuesta es válida
+        // 🔴 Si el backend responde 400, mostramos el mensaje de error
+        if (!response.ok) {
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        // ✅ Solo si todo fue bien, construimos las tarjetas
         decodeResultContainer.innerHTML = `
           <div class="decode-card">
             <div class="decode-card-header">
@@ -237,10 +241,11 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
         lucide.createIcons();
 
       } catch (error) {
-        decodeResultContainer.innerHTML = `<div class="error-box">❌ Token inválido: ${error.message}</div>`;
+        decodeResultContainer.innerHTML = `<div class="error-box">❌ ${error.message}</div>`;
         viewAnalysisBtn.classList.add('hidden');
       }
     }
+
 
     async function performBackgroundAnalysis(token) {
       try {
@@ -292,6 +297,61 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
         alert(`❌ ${e.message}`);
       }
     }
+
+    async function verifySignatureFromDecoder() {
+      // Usamos el último token decodificado en el Decoder
+      const token =
+        (currentAnalyzedToken && currentAnalyzedToken.trim()) ||
+        document.getElementById("tokenInput").value.trim();
+
+      const secret = document
+        .getElementById("decoderSecretInput")
+        .value.trim();
+
+      const resultBox = document.getElementById("decoderSignatureResult");
+
+      if (!token) {
+        resultBox.textContent = "⚠️ First decode a JWT token in this tab.";
+        return;
+      }
+
+      if (!secret) {
+        resultBox.textContent = "⚠️ Please enter the secret to verify the signature.";
+        return;
+      }
+
+      resultBox.textContent = "⏳ Verifying signature...";
+
+      try {
+        const res = await fetch(`${API_URL}/api/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, secret }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        if (data.signatureVerified) {
+          // Firma válida
+          resultBox.textContent = `✅ Signature VALID (alg: ${data.algorithm || "unknown"})`;
+          resultBox.classList.remove("error-box");
+          resultBox.classList.add("success-box");
+        } else {
+          // Firma inválida
+          resultBox.textContent = `❌ Signature INVALID (alg: ${data.algorithm || "unknown"})`;
+          resultBox.classList.remove("success-box");
+          resultBox.classList.add("error-box");
+        }
+      } catch (err) {
+        resultBox.textContent = `❌ Error verifying signature: ${err.message}`;
+        resultBox.classList.remove("success-box");
+        resultBox.classList.add("error-box");
+      }
+    }
+
     
 
     async function encodeToken() {
@@ -356,6 +416,67 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
       }
     }
 
+
+    // ##### FUNCIONES PARA EVITAR DISCREPANCIA ENTRE LA SELECCION DEL ALGORITMO
+    
+    
+    // Utilidad para pretty-print JSON con indentación
+    function formatJson(obj) {
+      return JSON.stringify(obj, null, 4);
+    }
+
+    // Cuando cambia el select de algoritmo → actualizar header.alg
+    function onAlgorithmChange() {
+      const select = document.getElementById("algorithmInput");
+      const headerTextarea = document.getElementById("headerInput");
+      const alg = select.value;
+
+      let headerObj;
+
+      // Intentamos parsear el header actual; si está roto, creamos uno nuevo
+      try {
+        headerObj = JSON.parse(headerTextarea.value || "{}");
+      } catch (e) {
+        headerObj = {};
+      }
+
+      // Forzamos el algoritmo seleccionado
+      headerObj.alg = alg;
+
+      // Si no hay typ, lo ponemos por defecto
+      if (!headerObj.typ) {
+        headerObj.typ = "JWT";
+      }
+
+      // Reescribimos el textarea formateado
+      headerTextarea.value = formatJson(headerObj);
+    }
+
+    // Cuando el usuario edita el header → sincronizar el select si el alg es válido
+    function onHeaderChanged() {
+      const headerTextarea = document.getElementById("headerInput");
+      const select = document.getElementById("algorithmInput");
+
+      let headerObj;
+      try {
+        headerObj = JSON.parse(headerTextarea.value);
+      } catch (e) {
+        // Mientras el JSON esté mal escrito, no hacemos nada
+        return;
+      }
+
+      const alg = headerObj.alg;
+
+      // Solo sincronizamos si es uno de los tres soportados
+      const allowed = ["HS256", "HS384", "HS512"];
+      if (typeof alg === "string" && allowed.includes(alg)) {
+        select.value = alg;
+      }
+    }
+
+
+    //######
+
     function copyToken() {
         if (!window.generatedToken) return alert("No token to copy");
         navigator.clipboard.writeText(window.generatedToken);
@@ -396,7 +517,8 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
         const data = await res.json();
     
         renderLexicalTable(data.lexical);
-        renderSyntacticPanel(data.syntactic);
+        setSyntacticAnalysis(data.syntactic);
+
         renderSemanticPanel(data.semantic); 
     
         addToHistory('analysis', data);
@@ -407,13 +529,67 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
     
     function renderLexicalTable(lexical) {
       const container = document.getElementById('lexicalResult');
-    
-      if (!lexical || !Array.isArray(lexical.table) || lexical.table.length === 0) {
+
+      if (!lexical || !Array.isArray(lexical.table)) {
         container.textContent = 'No lexical data';
         return;
       }
-    
-      const rowsHtml = lexical.table.map(row => `
+
+      const table = lexical.table;
+
+      // Token original escrito en el área de análisis
+      const tokenRaw = document.getElementById("analysisTokenInput").value.trim();
+      const parts = tokenRaw ? tokenRaw.split(".") : [];
+
+      // 🔍 ¿Algún SEGMENT tiene error de Base64URL u otro error?
+      const hasSegmentError = table.some(
+        (row) =>
+          row.token === "SEGMENT" &&
+          typeof row.estado === "string" &&
+          row.estado.includes("ERROR")
+      );
+
+      let structureMessage = "";
+      let structureClass = "";
+
+      // ==============================
+      //  LÓGICA DEL MENSAJE RESUMEN
+      // ==============================
+      if (!tokenRaw) {
+        structureMessage = "Ingresa un JWT para realizar el análisis léxico.";
+        structureClass = "lexical-error-box";
+      } else if (parts.length < 3) {
+        structureMessage =
+          `❌ Estructura inválida: el JWT tiene SOLO ${parts.length} segmentos. ` +
+          `Debe tener exactamente 3 (HEADER.PAYLOAD.SIGNATURE).`;
+        if (hasSegmentError) {
+          structureMessage +=
+            " Además, se detectaron segmentos con contenido Base64URL inválido.";
+        }
+        structureClass = "lexical-error-box";
+      } else if (parts.length > 3) {
+        structureMessage =
+          `❌ Estructura inválida: el JWT tiene ${parts.length} segmentos. ` +
+          `Un JWT válido solo debe tener 3 (HEADER.PAYLOAD.SIGNATURE).`;
+        if (hasSegmentError) {
+          structureMessage +=
+            " También se encontraron segmentos con Base64URL inválido.";
+        }
+        structureClass = "lexical-error-box";
+      } else {
+        // parts.length === 3
+        if (hasSegmentError) {
+          structureMessage =
+            "❌ Estructura correcta (3 segmentos), PERO al menos uno de los segmentos no es Base64URL válido. El token es léxicamente inválido.";
+          structureClass = "lexical-error-box";
+        } else {
+          structureMessage =
+            "✔️ Estructura y contenido válidos: el JWT tiene 3 segmentos y todos los bloques cumplen Base64URL.";
+          structureClass = "lexical-ok-box";
+        }
+      }
+
+      const rowsHtml = table.map(row => `
         <tr>
           <td class="lexical-td index">${row.index}</td>
           <td class="lexical-td lexeme">
@@ -427,8 +603,12 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
           <td class="lexical-td estado">${row.estado}</td>
         </tr>
       `).join('');
-    
+
       container.innerHTML = `
+        <div class="${structureClass}" style="margin-bottom: 1rem;">
+          ${structureMessage}
+        </div>
+
         <table class="lexical-table">
           <thead>
             <tr>
@@ -445,87 +625,88 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
       `;
     }
 
+
+
     function renderSyntacticPanel(syntactic) {
-      const container = document.getElementById('syntacticResult');
-    
+      const container = document.getElementById("syntacticResult");
+      if (!container) return;
+
       if (!syntactic) {
-        container.textContent = 'No syntactic data';
+        container.textContent = "No syntactic data";
         return;
       }
-    
+
+      const isValid = syntactic.isValid;
+      const errors = syntactic.errors || [];
       const segments = syntactic.segments || {};
-      const headerJson = segments.header
-        ? escapeHtml(JSON.stringify(segments.header, null, 2))
-        : '—';
-      const payloadJson = segments.payload
-        ? escapeHtml(JSON.stringify(segments.payload, null, 2))
-        : '—';
-    
-      const sigRaw = segments.signatureRaw || segments.signatureB64 || '—';
-    
-      // Si el backend mandó "derivation", la usamos, si no la armamos rápido
-      let derivLines = syntactic.derivation && syntactic.derivation.length
-        ? syntactic.derivation
-        : [
-            'S',
-            'J',
-            'H "." P "." Sg',
-            'Base64url(JSON) "." Base64url(JSON) "." Base64url(firma)',
-            `${segments.headerB64 || '???'} "." ${segments.payloadB64 || '???'} "." ${segments.signatureB64 || '???'}`
-          ];
-    
-      const derivHtml = derivLines
-        .map((line, i) => (i === 0 ? escapeHtml(line) : '⇒ ' + escapeHtml(line)))
-        .join('<br>');
-    
-      const errorsHtml = (syntactic.errors && syntactic.errors.length)
-        ? `<ul class="syntactic-errors">
-            ${syntactic.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
-           </ul>`
-        : '<p class="syntactic-ok">Sin errores sintácticos.</p>';
-    
+
+      const h = segments.headerB64 || "(no header)";
+      const p = segments.payloadB64 || "(no payload)";
+      const s = segments.signatureB64 || "(no signature)";
+
       container.innerHTML = `
-        <div class="syntactic-wrapper">
-          <div class="syntactic-summary">
-            <span class="syntactic-status syntactic-status-${syntactic.isValid ? 'ok' : 'error'}">
-              ${syntactic.isValid ? 'Válido' : 'Inválido'}
+        <div class="syntactic-box">
+
+          <div class="synt-header-row">
+            <span class="synt-status ${isValid ? "ok" : "error"}">
+              ${isValid ? "🟢 Válido" : "🔴 Inválido"}
             </span>
+            ${
+              errors.length === 0
+                ? `<span class="synt-subtext">Sin errores sintácticos.</span>`
+                : ""
+            }
           </div>
-    
-          ${errorsHtml}
-    
-          <div class="syntactic-grid">
-            <!-- IZQUIERDA: Árbol / derivación -->
-            <div class="syntactic-left">
-              <h4 class="syntactic-title">Árbol de derivación</h4>
-              <div class="syntactic-tree">
-                ${derivHtml}
+
+          ${
+            errors.length > 0
+              ? `
+          <div class="synt-section">
+            <h4>Errores sintácticos</h4>
+            <ul class="synt-error-list">
+              ${errors.map(e => `<li>${e}</li>`).join("")}
+            </ul>
+          </div>`
+              : ""
+          }
+
+          <div class="synt-section">
+            <h4>Árbol de derivación</h4>
+            <pre class="code-block tree-block">${
+              syntactic.asciiTree || "Árbol no disponible"
+            }</pre>
+          </div>
+
+          <div class="synt-section">
+            <h4>Estructura reconocida</h4>
+            <pre class="code-block">
+    S  → J
+    J  → H "." P "." Sg
+    H, P, Sg → SEGMENT (Base64URL)
+            </pre>
+          </div>
+
+          <div class="synt-section">
+            <h4>Segmentos</h4>
+            <div class="segment-grid">
+              <div class="segment-card">
+                <div class="segment-label">HEADER</div>
+                <div class="segment-value">${h}</div>
+              </div>
+              <div class="segment-card">
+                <div class="segment-label">PAYLOAD</div>
+                <div class="segment-value">${p}</div>
+              </div>
+              <div class="segment-card">
+                <div class="segment-label">SIGNATURE</div>
+                <div class="segment-value">${s}</div>
               </div>
             </div>
-    
-            <!-- DERECHA: Contenido header / payload / firma -->
-            <div class="syntactic-right">
-              <h4 class="syntactic-title">Contenido del token</h4>
-    
-              <div class="syntactic-block">
-                <div class="syntactic-label">Header (JSON)</div>
-                <pre class="syntactic-pre">${headerJson}</pre>
-              </div>
-    
-              <div class="syntactic-block">
-                <div class="syntactic-label">Payload (JSON)</div>
-                <pre class="syntactic-pre">${payloadJson}</pre>
-              </div>
-    
-              <div class="syntactic-block">
-                <div class="syntactic-label">Firma (Base64URL)</div>
-                <code class="syntactic-code">${escapeHtml(sigRaw)}</code>
-              </div>
-            </div>
           </div>
+
         </div>
       `;
-    }    
+    }
 
     async function loadHistoryFromServer() {
       try {
@@ -835,5 +1016,205 @@ const API_URL = "https://yvz6zera5f.execute-api.us-east-1.amazonaws.com";
     }
     
     
+  function asciiFromJsonTree(node, prefix = "", isLast = true, acc = []) {
+    if (!node) return acc;
+
+    const connector = prefix === "" ? "" : (isLast ? "└── " : "├── ");
+    acc.push(prefix + connector + (node.label || node.type || "(nodo)"));
+
+    const children = node.children || [];
+    const nextPrefix = prefix + (isLast ? "    " : "│   ");
+
+    children.forEach((child, index) => {
+      asciiFromJsonTree(
+        child,
+        nextPrefix,
+        index === children.length - 1,
+        acc
+      );
+    });
+
+    return acc;
+  }
+
+
+
+function setSyntacticAnalysis(syntactic) {
+  const container = document.getElementById("syntacticResult");
+  if (!container) return;
+
+  if (!syntactic) {
+    container.innerHTML = `<div class="syntactic-empty">No syntactic data</div>`;
+    return;
+  }
+
+  const isValid    = !!syntactic.isValid;
+  const errors     = syntactic.errors || [];
+  const grammar    = syntactic.grammar || "";
+  const derivation = syntactic.derivation || [];
+  const segments   = syntactic.segments || {};
+  const asciiJwt   = syntactic.asciiTree || "Árbol no disponible";
+
+  const h = segments.headerB64  || "(no header)";
+  const p = segments.payloadB64 || "(no payload)";
+  const s = segments.signatureB64 || "(no signature)";
+
+  // Árboles JSON desde el parser formal
+  let headerJsonAscii = null;
+  let payloadJsonAscii = null;
+
+  if (syntactic.jsonTrees?.header) {
+    const lines = asciiFromJsonTree({
+      label: "HEADER",
+      children: [syntactic.jsonTrees.header]
+    });
+    headerJsonAscii = lines.join("\n");
+  }
+
+  if (syntactic.jsonTrees?.payload) {
+    const lines = asciiFromJsonTree({
+      label: "PAYLOAD",
+      children: [syntactic.jsonTrees.payload]
+    });
+    payloadJsonAscii = lines.join("\n");
+  }
+
+  // ----- TABS para seleccionar árbol -----
+  let tabsHtml   = "";
+  let panelsHtml = "";
+
+  // Siempre mostramos el árbol JWT
+  tabsHtml += `
+    <button class="tree-tab active" data-target="tree-jwt">JWT</button>
+  `;
+  panelsHtml += `
+    <pre id="tree-jwt" class="tree-panel active"><code>${escapeHtml(asciiJwt)}</code></pre>
+  `;
+
+  if (headerJsonAscii) {
+    tabsHtml += `
+      <button class="tree-tab" data-target="tree-header">HEADER (JSON)</button>
+    `;
+    panelsHtml += `
+      <pre id="tree-header" class="tree-panel"><code>${escapeHtml(headerJsonAscii)}</code></pre>
+    `;
+  }
+
+  if (payloadJsonAscii) {
+    tabsHtml += `
+      <button class="tree-tab" data-target="tree-payload">PAYLOAD (JSON)</button>
+    `;
+    panelsHtml += `
+      <pre id="tree-payload" class="tree-panel"><code>${escapeHtml(payloadJsonAscii)}</code></pre>
+    `;
+  }
+
+  // ----- GRAMÁTICA -----
+  const grammarHtml = grammar
+    ? `<pre class="code-block">${escapeHtml(grammar)}</pre>`
+    : `<pre class="code-block">Gramática no disponible</pre>`;
+
+  // ----- DERIVACIÓN -----
+  const derivationHtml =
+    derivation && derivation.length
+      ? `<pre class="code-block">${escapeHtml(derivation.join("\n⇒ "))}</pre>`
+      : `<pre class="code-block">Derivación no disponible</pre>`;
+
+  // ----- ERRORES -----
+  const errorsHtml =
+    errors.length > 0
+      ? `
+      <div class="synt-section">
+        <h4>Errores sintácticos</h4>
+        <ul class="synt-error-list">
+          ${errors.map(e => `<li>${escapeHtml(e)}</li>`).join("")}
+        </ul>
+      </div>
+    `
+      : "";
+
+  // ----- SEGMENTOS -----
+  const segmentsHtml = `
+    <div class="synt-section">
+      <h4>Segmentos reconocidos</h4>
+      <div class="segment-grid">
+        <div class="segment-card">
+          <div class="segment-label">HEADER</div>
+          <div class="segment-value">${escapeHtml(h)}</div>
+        </div>
+        <div class="segment-card">
+          <div class="segment-label">PAYLOAD</div>
+          <div class="segment-value">${escapeHtml(p)}</div>
+        </div>
+        <div class="segment-card">
+          <div class="segment-label">SIGNATURE</div>
+          <div class="segment-value">${escapeHtml(s)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // ----- ARMAMOS TODO EL PANEL -----
+  container.innerHTML = `
+    <div class="syntactic-box">
+      <div class="synt-header-row">
+        <div class="synt-status ${isValid ? "ok" : "error"}">
+          <span class="dot"></span>
+          <span>${isValid ? "🟢 TOKEN VÁLIDO" : "🔴 TOKEN INVÁLIDO"}</span>
+        </div>
+        <span class="synt-subtext">
+          ${isValid && errors.length === 0
+            ? "Sin errores sintácticos en la estructura JWT."
+            : errors.length > 0
+              ? "Se encontraron errores en la estructura del token."
+              : ""}
+        </span>
+      </div>
+
+      ${errorsHtml}
+
+      <div class="synt-section">
+        <h4>Árbol de derivación</h4>
+        <div class="tree-tabs">
+          ${tabsHtml}
+        </div>
+        <div class="tree-panels">
+          ${panelsHtml}
+        </div>
+      </div>
+
+      <div class="synt-section">
+        <h4>Gramática usada (GLC)</h4>
+        ${grammarHtml}
+      </div>
+
+      <div class="synt-section">
+        <h4>Derivación paso a paso</h4>
+        ${derivationHtml}
+      </div>
+
+      ${segmentsHtml}
+    </div>
+  `;
+
+  // ----- LÓGICA DE TABS -----
+  const tabs   = container.querySelectorAll(".tree-tab");
+  const panels = container.querySelectorAll(".tree-panel");
+
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const targetId = tab.dataset.target;
+
+      tabs.forEach(t => t.classList.remove("active"));
+      panels.forEach(p => p.classList.remove("active"));
+
+      tab.classList.add("active");
+      const panel = container.querySelector("#" + targetId);
+      if (panel) panel.classList.add("active");
+    });
+  });
+}
+
+
     // Llama automáticamente al cargar la página
     window.addEventListener('DOMContentLoaded', loadHistoryFromServer);

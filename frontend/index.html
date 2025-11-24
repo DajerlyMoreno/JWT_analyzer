@@ -81,6 +81,39 @@
             <i data-lucide="microscope" class="w-5 h-5"></i>
             <span>View Complete Analysis</span>
           </button>
+
+              <!-- JWT SIGNATURE VERIFICATION (OPCIONAL) -->
+          <div class="card" style="margin-top: 1.5rem;">
+            <h3 class="card-title" style="margin-bottom: 0.5rem;">
+              <i data-lucide="shield-check" class="w-6 h-6"></i>
+              JWT Signature Verification (optional)
+            </h3>
+            <p class="card-description" style="margin-bottom: 1rem;">
+              Enter the secret used to sign this JWT. The token is the last one decoded en este módulo.
+            </p>
+
+            <div class="input-group">
+              <label class="input-label">Secret</label>
+             <textarea
+                id="decoderSecretInput"
+                class="textarea-field small-textarea"
+                placeholder="a-string-secret-at-least-256-bits-long"
+              ></textarea>
+
+            </div>
+
+            <button class="btn-primary" onclick="verifySignatureFromDecoder()">
+              <i data-lucide="check-circle" class="w-5 h-5"></i>
+              <span>Verify Signature</span>
+            </button>
+
+            <div id="decoderSignatureResult" class="result-box" style="margin-top: 1rem;">
+              Waiting for secret...
+            </div>
+          </div>
+
+
+
         </div>
       </section>
 
@@ -96,12 +129,19 @@
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
             <div class="input-group">
               <label class="input-label">Header</label>
-              <textarea id="headerInput" class="textarea-field" placeholder='{"alg": "HS256", "typ": "JWT"}'>
-{
-    "alg": "HS256", 
-    "typ": "JWT"
-}
+
+              <textarea
+                id="headerInput"
+                class="textarea-field"
+                placeholder='{"alg": "HS256", "typ": "JWT"}'
+                oninput="onHeaderChanged()"
+              >
+              {
+                  "alg": "HS256", 
+                  "typ": "JWT"
+              }
               </textarea>
+
             </div>
 
             <div class="input-group">
@@ -126,11 +166,16 @@
 
             <div class="input-group">
               <label class="input-label">Algorithm</label>
-              <select id="algorithmInput" class="select-field">
+              <select
+                id="algorithmInput"
+                class="select-field"
+                onchange="onAlgorithmChange()"
+              >
                 <option value="HS256">HS256</option>
                 <option value="HS384">HS384</option>
                 <option value="HS512">HS512</option>
               </select>
+
             </div>
           </div>
 

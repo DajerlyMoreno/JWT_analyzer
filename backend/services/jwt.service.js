@@ -1,6 +1,7 @@
 // services/jwt.service.js
 import crypto from "crypto";
 import { runJwtAutomaton } from "./automata.service.js";
+import { parseJsonObjectWithTree } from "./jsonParser.service.js";
 
 
 /** ======================
@@ -36,20 +37,47 @@ export function validateBase64UrlPart(part) {
  *  ====================== */
 export function parseJwt(token) {
   const parts = token.split(".");
-
   const [headerB64, payloadB64, signatureB64] = parts;
 
-  // Decodificación + JSON
+  // --- Decodificación ---
   const headerStr = base64UrlDecode(headerB64).toString("utf8");
   const payloadStr = base64UrlDecode(payloadB64).toString("utf8");
 
+  // --- Parseo simple JSON ---
   const header = safeJsonParse(headerStr);
   const payload = safeJsonParse(payloadStr);
 
-  //if (!header) throw new Error("HEADER no es JSON válido");
-  //if (!payload) throw new Error("PAYLOAD no es JSON válido");
+  // --- Parseo JSON formal (nuevo parser con árbol) ---
+  let headerJson = null;
+  let payloadJson = null;
+  let headerJsonTree = null;
+  let payloadJsonTree = null;
 
-  return { header, payload, signatureB64, parts: { headerB64, payloadB64, signatureB64 }, raw: { headerStr, payloadStr } };
+  const parsedHeader = parseJsonObjectWithTree(headerStr);
+  if (parsedHeader) {
+    headerJson = parsedHeader.value;
+    headerJsonTree = parsedHeader.tree;
+  }
+
+  const parsedPayload = parseJsonObjectWithTree(payloadStr);
+  if (parsedPayload) {
+    payloadJson = parsedPayload.value;
+    payloadJsonTree = parsedPayload.tree;
+  }
+
+  return {
+    header,
+    payload,
+    signatureB64,
+    parts: { headerB64, payloadB64, signatureB64 },
+    raw: { headerStr, payloadStr },
+
+    // nuevos datos
+    headerJson,
+    payloadJson,
+    headerJsonTree,
+    payloadJsonTree
+  };
 }
 
 /** ======================
@@ -79,16 +107,21 @@ export function verifyHmac(headerB64, payloadB64, signatureB64, secret, algorith
  *  ====================== */
 export function lexicalAnalysis(token) {
   const parts = token.split(".");     // Divide por puntos (incluye vacíos al inicio/fin)
-  const table= [];
+  const table = [];
+  const tokens = [];
   let idx = 1;
 
-  const push = (lexeme, tokenType, estado) => {
+  const pushRow = (lexeme, tokenType, estado) => {
     table.push({
       index: idx++,
       lexeme,
       token: tokenType,
       estado
     });
+  };
+
+  const pushToken = (type, lexeme) => {
+    tokens.push({ type, lexeme });
   };
 
   // Recorremos TODOS los "bloques" separados por '.'
@@ -98,34 +131,40 @@ export function lexicalAnalysis(token) {
     if (part && part !== "") {
       // Hay contenido, validamos Base64URL
       if (!validateBase64UrlPart(part)) {
-        push(part, "SEGMENT", "❌ ERROR Base64URL inválido");
+        pushRow(part, "SEGMENT", "❌ ERROR Base64URL inválido");
       } else {
-        push(part, "SEGMENT", "🟢 Válido");
+        pushRow(part, "SEGMENT", "🟢 Válido");
       }
+      // Sintácticamente sigue siendo un SEGMENT, aunque léxicamente tenga error
+      pushToken("SEGMENT", part);
     } else {
       // Bloque vacío → error léxico de segmento vacío
-      push("(vacío)", "SEGMENT", "❌ ERROR BLOQUE VACÍO");
+      pushRow("(vacío)", "SEGMENT", "❌ ERROR BLOQUE VACÍO");
+      pushToken("SEGMENT", "(vacío)");
     }
 
     // --- DOT (el punto que separa este bloque del siguiente) ---
     if (i < parts.length - 1) {
-      // Siempre que haya otro bloque después, hubo un punto aquí
-      push(".", "DOT", "🟢 Válido");
+      pushRow(".", "DOT", "🟢 Válido");
+      pushToken("DOT", ".");
     }
   });
 
   // --- EOF ---
-  push("EOF", "EOF", "—");
+  pushRow("EOF", "EOF", "—");
+  pushToken("EOF", "EOF");
 
-  return { table };
+  return { table, tokens };
 }
+
+
 
 /** ======================
  *  Análisis Sintáctico (verificador CFG)
  *  ====================== */
 // services/jwt.service.js
 
-export function syntacticAnalysis(parsed, rawToken = null) {
+/*export function syntacticAnalysis(parsed, rawToken = null) {
   const grammar = `
 S  -> J
 J  -> H "." P "." Sg
@@ -148,6 +187,16 @@ Sg -> Base64url(firma)
       segments: null,
       automaton
     };
+  }
+
+  // 🧩 Validación de estructura: cantidad de segmentos
+  if (rawToken) {
+    const rawParts = rawToken.split(".");
+    if (rawParts.length !== 3) {
+      errors.push(
+        `Estructura inválida: el token tiene ${rawParts.length} segmentos. Un JWT válido debe tener exactamente 3 (HEADER.PAYLOAD.SIGNATURE).`
+      );
+    }
   }
 
   // ✅ Ejecutar el autómata sobre el token crudo (si lo pasas)
@@ -235,7 +284,7 @@ Sg -> Base64url(firma)
     automaton   // 👈 para mostrar en el front la traza del AFD
   };
 }
-
+*/
 
 
 /* ======================================================
@@ -304,15 +353,7 @@ export function semanticAnalysis(parsed, syntacticIsValid, secret = null) {
   const errors = [];
   const warnings = [];
 
-  /* ------------------------
-   * Claims obligatorios (TU TOKEN)
-   * ------------------------ */
-  const REQUIRED_CLAIMS = ["sub", "name", "admin", "iat"];
 
-  REQUIRED_CLAIMS.forEach(c => {
-    if (payload[c] === undefined)
-      errors.push(`Claim obligatorio '${c}' ausente`);
-  });
 
   /* ------------------------
    * Validación del HEADER
@@ -329,16 +370,48 @@ export function semanticAnalysis(parsed, syntacticIsValid, secret = null) {
   /* ------------------------
    * Claims Estándar (tipos)
    * ------------------------ */
+  // Tipos estándar de tiempo: exp, nbf, iat
   const timeErrs = validateTimeClaims(payload);
   errors.push(...timeErrs);
 
-  ["sub", "name"].forEach(k => {
-    if (payload[k] !== undefined && typeof payload[k] !== "string")
+  // Strings estándar
+  ["iss", "sub", "name", "jti"].forEach(k => {
+    if (payload[k] !== undefined && typeof payload[k] !== "string") {
       errors.push(`${k} debe ser string`);
+    }
   });
 
-  if (payload.admin !== undefined && typeof payload.admin !== "boolean")
+  // aud puede ser string o array de strings
+  if (payload.aud !== undefined) {
+    const aud = payload.aud;
+    const ok =
+      typeof aud === "string" ||
+      (Array.isArray(aud) && aud.every(x => typeof x === "string"));
+    if (!ok) {
+      errors.push("aud debe ser string o arreglo de strings");
+    }
+  }
+
+  // Claim privado admin: solo validar tipo si existe
+  if (payload.admin !== undefined && typeof payload.admin !== "boolean") {
     errors.push("admin debe ser boolean (true/false)");
+  }
+  
+  // ⚠ Claims recomendados (NO obligatorios)
+  if (payload.sub === undefined) {
+    warnings.push(
+      "El token no incluye 'sub' (Subject). Es opcional según la RFC 7519, " +
+      "pero muchas APIs lo usan para identificar al usuario."
+    );
+  }
+
+  if (payload.exp === undefined) {
+    warnings.push(
+      "El token no incluye 'exp' (Expiration Time). Es opcional, " +
+      "pero en tokens de autenticación se recomienda fuertemente " +
+      "tener fecha de expiración."
+    );
+  }
 
   /* ------------------------
    * Verificación criptográfica (opcional)
