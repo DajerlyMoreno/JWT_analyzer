@@ -1,6 +1,7 @@
 // services/jwt.service.js
 import crypto from "crypto";
 import { runJwtAutomaton } from "./automata.service.js";
+import { parseJsonObjectWithTree } from "./jsonParser.service.js";
 
 
 /** ======================
@@ -36,20 +37,47 @@ export function validateBase64UrlPart(part) {
  *  ====================== */
 export function parseJwt(token) {
   const parts = token.split(".");
-
   const [headerB64, payloadB64, signatureB64] = parts;
 
-  // Decodificación + JSON
+  // --- Decodificación ---
   const headerStr = base64UrlDecode(headerB64).toString("utf8");
   const payloadStr = base64UrlDecode(payloadB64).toString("utf8");
 
+  // --- Parseo simple JSON ---
   const header = safeJsonParse(headerStr);
   const payload = safeJsonParse(payloadStr);
 
-  //if (!header) throw new Error("HEADER no es JSON válido");
-  //if (!payload) throw new Error("PAYLOAD no es JSON válido");
+  // --- Parseo JSON formal (nuevo parser con árbol) ---
+  let headerJson = null;
+  let payloadJson = null;
+  let headerJsonTree = null;
+  let payloadJsonTree = null;
 
-  return { header, payload, signatureB64, parts: { headerB64, payloadB64, signatureB64 }, raw: { headerStr, payloadStr } };
+  const parsedHeader = parseJsonObjectWithTree(headerStr);
+  if (parsedHeader) {
+    headerJson = parsedHeader.value;
+    headerJsonTree = parsedHeader.tree;
+  }
+
+  const parsedPayload = parseJsonObjectWithTree(payloadStr);
+  if (parsedPayload) {
+    payloadJson = parsedPayload.value;
+    payloadJsonTree = parsedPayload.tree;
+  }
+
+  return {
+    header,
+    payload,
+    signatureB64,
+    parts: { headerB64, payloadB64, signatureB64 },
+    raw: { headerStr, payloadStr },
+
+    // nuevos datos
+    headerJson,
+    payloadJson,
+    headerJsonTree,
+    payloadJsonTree
+  };
 }
 
 /** ======================

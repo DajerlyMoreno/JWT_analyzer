@@ -517,7 +517,8 @@ const API_URL = "http://localhost:3000";
         const data = await res.json();
     
         renderLexicalTable(data.lexical);
-        renderSyntacticPanel(data.syntactic);
+        setSyntacticAnalysis(data.syntactic);
+
         renderSemanticPanel(data.semantic); 
     
         addToHistory('analysis', data);
@@ -1015,5 +1016,205 @@ const API_URL = "http://localhost:3000";
     }
     
     
+  function asciiFromJsonTree(node, prefix = "", isLast = true, acc = []) {
+    if (!node) return acc;
+
+    const connector = prefix === "" ? "" : (isLast ? "└── " : "├── ");
+    acc.push(prefix + connector + (node.label || node.type || "(nodo)"));
+
+    const children = node.children || [];
+    const nextPrefix = prefix + (isLast ? "    " : "│   ");
+
+    children.forEach((child, index) => {
+      asciiFromJsonTree(
+        child,
+        nextPrefix,
+        index === children.length - 1,
+        acc
+      );
+    });
+
+    return acc;
+  }
+
+
+
+function setSyntacticAnalysis(syntactic) {
+  const container = document.getElementById("syntacticResult");
+  if (!container) return;
+
+  if (!syntactic) {
+    container.innerHTML = `<div class="syntactic-empty">No syntactic data</div>`;
+    return;
+  }
+
+  const isValid    = !!syntactic.isValid;
+  const errors     = syntactic.errors || [];
+  const grammar    = syntactic.grammar || "";
+  const derivation = syntactic.derivation || [];
+  const segments   = syntactic.segments || {};
+  const asciiJwt   = syntactic.asciiTree || "Árbol no disponible";
+
+  const h = segments.headerB64  || "(no header)";
+  const p = segments.payloadB64 || "(no payload)";
+  const s = segments.signatureB64 || "(no signature)";
+
+  // Árboles JSON desde el parser formal
+  let headerJsonAscii = null;
+  let payloadJsonAscii = null;
+
+  if (syntactic.jsonTrees?.header) {
+    const lines = asciiFromJsonTree({
+      label: "HEADER",
+      children: [syntactic.jsonTrees.header]
+    });
+    headerJsonAscii = lines.join("\n");
+  }
+
+  if (syntactic.jsonTrees?.payload) {
+    const lines = asciiFromJsonTree({
+      label: "PAYLOAD",
+      children: [syntactic.jsonTrees.payload]
+    });
+    payloadJsonAscii = lines.join("\n");
+  }
+
+  // ----- TABS para seleccionar árbol -----
+  let tabsHtml   = "";
+  let panelsHtml = "";
+
+  // Siempre mostramos el árbol JWT
+  tabsHtml += `
+    <button class="tree-tab active" data-target="tree-jwt">JWT</button>
+  `;
+  panelsHtml += `
+    <pre id="tree-jwt" class="tree-panel active"><code>${escapeHtml(asciiJwt)}</code></pre>
+  `;
+
+  if (headerJsonAscii) {
+    tabsHtml += `
+      <button class="tree-tab" data-target="tree-header">HEADER (JSON)</button>
+    `;
+    panelsHtml += `
+      <pre id="tree-header" class="tree-panel"><code>${escapeHtml(headerJsonAscii)}</code></pre>
+    `;
+  }
+
+  if (payloadJsonAscii) {
+    tabsHtml += `
+      <button class="tree-tab" data-target="tree-payload">PAYLOAD (JSON)</button>
+    `;
+    panelsHtml += `
+      <pre id="tree-payload" class="tree-panel"><code>${escapeHtml(payloadJsonAscii)}</code></pre>
+    `;
+  }
+
+  // ----- GRAMÁTICA -----
+  const grammarHtml = grammar
+    ? `<pre class="code-block">${escapeHtml(grammar)}</pre>`
+    : `<pre class="code-block">Gramática no disponible</pre>`;
+
+  // ----- DERIVACIÓN -----
+  const derivationHtml =
+    derivation && derivation.length
+      ? `<pre class="code-block">${escapeHtml(derivation.join("\n⇒ "))}</pre>`
+      : `<pre class="code-block">Derivación no disponible</pre>`;
+
+  // ----- ERRORES -----
+  const errorsHtml =
+    errors.length > 0
+      ? `
+      <div class="synt-section">
+        <h4>Errores sintácticos</h4>
+        <ul class="synt-error-list">
+          ${errors.map(e => `<li>${escapeHtml(e)}</li>`).join("")}
+        </ul>
+      </div>
+    `
+      : "";
+
+  // ----- SEGMENTOS -----
+  const segmentsHtml = `
+    <div class="synt-section">
+      <h4>Segmentos reconocidos</h4>
+      <div class="segment-grid">
+        <div class="segment-card">
+          <div class="segment-label">HEADER</div>
+          <div class="segment-value">${escapeHtml(h)}</div>
+        </div>
+        <div class="segment-card">
+          <div class="segment-label">PAYLOAD</div>
+          <div class="segment-value">${escapeHtml(p)}</div>
+        </div>
+        <div class="segment-card">
+          <div class="segment-label">SIGNATURE</div>
+          <div class="segment-value">${escapeHtml(s)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // ----- ARMAMOS TODO EL PANEL -----
+  container.innerHTML = `
+    <div class="syntactic-box">
+      <div class="synt-header-row">
+        <div class="synt-status ${isValid ? "ok" : "error"}">
+          <span class="dot"></span>
+          <span>${isValid ? "🟢 TOKEN VÁLIDO" : "🔴 TOKEN INVÁLIDO"}</span>
+        </div>
+        <span class="synt-subtext">
+          ${isValid && errors.length === 0
+            ? "Sin errores sintácticos en la estructura JWT."
+            : errors.length > 0
+              ? "Se encontraron errores en la estructura del token."
+              : ""}
+        </span>
+      </div>
+
+      ${errorsHtml}
+
+      <div class="synt-section">
+        <h4>Árbol de derivación</h4>
+        <div class="tree-tabs">
+          ${tabsHtml}
+        </div>
+        <div class="tree-panels">
+          ${panelsHtml}
+        </div>
+      </div>
+
+      <div class="synt-section">
+        <h4>Gramática usada (GLC)</h4>
+        ${grammarHtml}
+      </div>
+
+      <div class="synt-section">
+        <h4>Derivación paso a paso</h4>
+        ${derivationHtml}
+      </div>
+
+      ${segmentsHtml}
+    </div>
+  `;
+
+  // ----- LÓGICA DE TABS -----
+  const tabs   = container.querySelectorAll(".tree-tab");
+  const panels = container.querySelectorAll(".tree-panel");
+
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const targetId = tab.dataset.target;
+
+      tabs.forEach(t => t.classList.remove("active"));
+      panels.forEach(p => p.classList.remove("active"));
+
+      tab.classList.add("active");
+      const panel = container.querySelector("#" + targetId);
+      if (panel) panel.classList.add("active");
+    });
+  });
+}
+
+
     // Llama automáticamente al cargar la página
     window.addEventListener('DOMContentLoaded', loadHistoryFromServer);

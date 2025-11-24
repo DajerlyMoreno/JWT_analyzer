@@ -56,13 +56,29 @@ export const analyzeToken = async (req, res) => {
     // 🧩 Si todo está bien, ahora sí parseamos
     const parsed = parseJwt(token);
 
-    const response = {
+   const response = {
       token,
+
+      // Datos decodificados visibles en el front
       header: parsed.header,
       payload: parsed.payload,
+      signature: parsed.signature,
+
+      // Segmentos
       parts: parsed.parts,
+
+      // Texto JSON original (string, para mostrarlo bonito)
+      headerJson: parsed.headerJson,
+      payloadJson: parsed.payloadJson,
+
+      // Árboles sintácticos JSON (para el futuro árbol visual)
+      headerJsonTree: parsed.headerJsonTree,
+      payloadJsonTree: parsed.payloadJsonTree,
+
+      // Autómata de estructura
       automaton
     };
+
 
     // 📝 Guardamos en historial (solo decodificación)
     await History.create({
@@ -87,35 +103,40 @@ export const analyzeToken = async (req, res) => {
 export const fullAnalysis = async (req, res) => {
   const { token, secret } = req.body;
 
-  // 1) LÉXICO
+  // 1. Análisis léxico
   const lexical = lexicalAnalysis(token);
 
+  // 2. Parseo base del JWT (decodificación + parser JSON)
   let parsed = null;
-  let syntactic = null;
-  let semantic = null;
-
-  // 2) SINTÁCTICO (parser formal con la GLC)
-  syntactic = runSyntacticParserFromLexical(lexical);
-
-  // 3) Intentar decodificar HEADER/PAYLOAD solo si al menos
-  //    tenemos segmentos estructurales del parser
-  if (syntactic && syntactic.segments) {
-    try {
-      parsed = parseJwt(token);
-
-    } catch (e) {
-      syntactic.errors.push(
-        "Error al decodificar HEADER/PAYLOAD como JSON: " + e.message
-      );
-    }
+  try {
+    parsed = parseJwt(token);
+  } catch (e) {
+    return res.json({
+      lexical,
+      syntactic: { isValid: false, errors: ["Error al decodificar token: " + e.message] },
+      semantic: null
+    });
   }
 
-  // 4) SEMÁNTICO (solo si tenemos algún parsed; si no, semantic dirá skipped)
-  semantic = semanticAnalysis(parsed, syntactic?.isValid === true, secret);
+  // 3. Parser sintáctico FORMAL del JWT
+  const syntactic = runSyntacticParserFromLexical(lexical);
 
-  // 5) Siempre respondemos con la estructura completa
-  res.json({ lexical, syntactic, semantic });
+  // 4. Adjuntar árboles JSON desde parseJwt
+  syntactic.jsonTrees = {
+    header: parsed.headerJsonTree,
+    payload: parsed.payloadJsonTree
+  };
+
+  // 5. Análisis semántico (opcional si la sintaxis es válida)
+  const semantic = semanticAnalysis(parsed, syntactic.isValid, secret);
+
+  return res.json({
+    lexical,
+    syntactic,
+    semantic
+  });
 };
+
 
 
 
