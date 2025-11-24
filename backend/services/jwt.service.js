@@ -43,26 +43,39 @@ export function parseJwt(token) {
   const headerStr = base64UrlDecode(headerB64).toString("utf8");
   const payloadStr = base64UrlDecode(payloadB64).toString("utf8");
 
-  // --- Parseo simple JSON ---
+  // --- Parseo simple JSON (para semántica) ---
   const header = safeJsonParse(headerStr);
   const payload = safeJsonParse(payloadStr);
 
-  // --- Parseo JSON formal (nuevo parser con árbol) ---
+  // --- Parseo JSON formal (nuevo parser con árbol), pero SOLO si Base64URL es válido ---
   let headerJson = null;
   let payloadJson = null;
   let headerJsonTree = null;
   let payloadJsonTree = null;
 
-  const parsedHeader = parseJsonObjectWithTree(headerStr);
-  if (parsedHeader) {
-    headerJson = parsedHeader.value;
-    headerJsonTree = parsedHeader.tree;
+  // HEADER: solo intento parser formal si el segmento cumple Base64URL
+  if (validateBase64UrlPart(headerB64)) {
+    try {
+      const parsedHeader = parseJsonObjectWithTree(headerStr);
+      headerJson = parsedHeader.value;
+      headerJsonTree = parsedHeader.tree;
+    } catch (e) {
+      // Si revienta el parser formal, lo dejamos en null
+      headerJson = null;
+      headerJsonTree = null;
+    }
   }
 
-  const parsedPayload = parseJsonObjectWithTree(payloadStr);
-  if (parsedPayload) {
-    payloadJson = parsedPayload.value;
-    payloadJsonTree = parsedPayload.tree;
+  // PAYLOAD: igual
+  if (validateBase64UrlPart(payloadB64)) {
+    try {
+      const parsedPayload = parseJsonObjectWithTree(payloadStr);
+      payloadJson = parsedPayload.value;
+      payloadJsonTree = parsedPayload.tree;
+    } catch (e) {
+      payloadJson = null;
+      payloadJsonTree = null;
+    }
   }
 
   return {
@@ -72,7 +85,7 @@ export function parseJwt(token) {
     parts: { headerB64, payloadB64, signatureB64 },
     raw: { headerStr, payloadStr },
 
-    // nuevos datos
+    // nuevos datos para el análisis sintáctico/visual
     headerJson,
     payloadJson,
     headerJsonTree,

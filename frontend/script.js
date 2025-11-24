@@ -1050,8 +1050,6 @@ function setSyntacticAnalysis(syntactic) {
 
   const isValid    = !!syntactic.isValid;
   const errors     = syntactic.errors || [];
-  const grammar    = syntactic.grammar || "";
-  const derivation = syntactic.derivation || [];
   const segments   = syntactic.segments || {};
   const asciiJwt   = syntactic.asciiTree || "Árbol no disponible";
 
@@ -1059,25 +1057,32 @@ function setSyntacticAnalysis(syntactic) {
   const p = segments.payloadB64 || "(no payload)";
   const s = segments.signatureB64 || "(no signature)";
 
-  // Árboles JSON desde el parser formal
   let headerJsonAscii = null;
   let payloadJsonAscii = null;
 
-  if (syntactic.jsonTrees?.header) {
+  // HEADER JSON
+  if (syntactic.jsonTrees && syntactic.jsonTrees.header) {
     const lines = asciiFromJsonTree({
       label: "HEADER",
       children: [syntactic.jsonTrees.header]
     });
     headerJsonAscii = lines.join("\n");
+  } else {
+    headerJsonAscii = "❌ No se pudo generar árbol JSON: HEADER no es JSON válido o el segmento no cumple Base64URL.";
   }
 
-  if (syntactic.jsonTrees?.payload) {
+  // PAYLOAD JSON
+  if (syntactic.jsonTrees && syntactic.jsonTrees.payload) {
     const lines = asciiFromJsonTree({
       label: "PAYLOAD",
       children: [syntactic.jsonTrees.payload]
     });
     payloadJsonAscii = lines.join("\n");
+  } else {
+    payloadJsonAscii = "❌ No se pudo generar árbol JSON: PAYLOAD no es JSON válido o el segmento no cumple Base64URL.";
   }
+
+
 
   // ----- TABS para seleccionar árbol -----
   let tabsHtml   = "";
@@ -1109,17 +1114,6 @@ function setSyntacticAnalysis(syntactic) {
     `;
   }
 
-  // ----- GRAMÁTICA -----
-  const grammarHtml = grammar
-    ? `<pre class="code-block">${escapeHtml(grammar)}</pre>`
-    : `<pre class="code-block">Gramática no disponible</pre>`;
-
-  // ----- DERIVACIÓN -----
-  const derivationHtml =
-    derivation && derivation.length
-      ? `<pre class="code-block">${escapeHtml(derivation.join("\n⇒ "))}</pre>`
-      : `<pre class="code-block">Derivación no disponible</pre>`;
-
   // ----- ERRORES -----
   const errorsHtml =
     errors.length > 0
@@ -1133,28 +1127,7 @@ function setSyntacticAnalysis(syntactic) {
     `
       : "";
 
-  // ----- SEGMENTOS -----
-  const segmentsHtml = `
-    <div class="synt-section">
-      <h4>Segmentos reconocidos</h4>
-      <div class="segment-grid">
-        <div class="segment-card">
-          <div class="segment-label">HEADER</div>
-          <div class="segment-value">${escapeHtml(h)}</div>
-        </div>
-        <div class="segment-card">
-          <div class="segment-label">PAYLOAD</div>
-          <div class="segment-value">${escapeHtml(p)}</div>
-        </div>
-        <div class="segment-card">
-          <div class="segment-label">SIGNATURE</div>
-          <div class="segment-value">${escapeHtml(s)}</div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // ----- ARMAMOS TODO EL PANEL -----
+  // ----- ARMAMOS SOLO LO NECESARIO DEL PANEL -----
   container.innerHTML = `
     <div class="syntactic-box">
       <div class="synt-header-row">
@@ -1182,18 +1155,6 @@ function setSyntacticAnalysis(syntactic) {
           ${panelsHtml}
         </div>
       </div>
-
-      <div class="synt-section">
-        <h4>Gramática usada (GLC)</h4>
-        ${grammarHtml}
-      </div>
-
-      <div class="synt-section">
-        <h4>Derivación paso a paso</h4>
-        ${derivationHtml}
-      </div>
-
-      ${segmentsHtml}
     </div>
   `;
 

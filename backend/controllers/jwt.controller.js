@@ -103,33 +103,84 @@ export const analyzeToken = async (req, res) => {
 export const fullAnalysis = async (req, res) => {
   const { token, secret } = req.body;
 
-  // 1. Análisis léxico
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({ error: "Debes enviar un token." });
+  }
+
+  /* ============================================================
+   * 1. ANÁLISIS LÉXICO
+   * ============================================================ */
   const lexical = lexicalAnalysis(token);
 
-  // 2. Parseo base del JWT (decodificación + parser JSON)
+  // Detectar errores léxicos reales
+  const hasLexicalErrors = lexical.table.some(
+    row =>
+      row.token === "SEGMENT" &&
+      typeof row.estado === "string" &&
+      row.estado.includes("ERROR")
+  );
+
+  /* ============================================================
+   * 2. PARSEO BÁSICO JWT (BASE64 + JSON)
+   * ============================================================ */
   let parsed = null;
   try {
     parsed = parseJwt(token);
   } catch (e) {
     return res.json({
       lexical,
-      syntactic: { isValid: false, errors: ["Error al decodificar token: " + e.message] },
-      semantic: null
+      syntactic: {
+        isValid: false,
+        errors: ["Error al decodificar JSON (HEADER o PAYLOAD): " + e.message],
+        derivation: [],
+        asciiTree: null,
+        segments: null,
+        jsonTrees: {}
+      },
+      semantic: {
+        skipped: true,
+        valid: false,
+        errors: ["No se ejecutó semántica por error de decodificación."],
+        warnings: [],
+        signatureVerified: null,
+        symbolTable: { header: {}, payload: {} }
+      }
     });
   }
 
-  // 3. Parser sintáctico FORMAL del JWT
+  /* ============================================================
+   * 3. ANÁLISIS SINTÁCTICO FORMAL DEL JWT
+   * ============================================================ */
   const syntactic = runSyntacticParserFromLexical(lexical);
 
-  // 4. Adjuntar árboles JSON desde parseJwt
-  syntactic.jsonTrees = {
-    header: parsed.headerJsonTree,
-    payload: parsed.payloadJsonTree
-  };
+/*
+  // Si existen errores léxicos → el parser es inválido
+  if (hasLexicalErrors) {
+    syntactic.isValid = false;
+    syntactic.errors = syntactic.errors || [];
+    syntactic.errors.push(
+      "Existen errores léxicos: segmentos vacíos o Base64URL inválido."
+    );
+  }*/
 
-  // 5. Análisis semántico (opcional si la sintaxis es válida)
+  /* ============================================================
+   * 4. Adjuntar árboles JSON desde parseJwt SOLO si es válido
+   * ============================================================ */
+
+    syntactic.jsonTrees = {
+      header: parsed.headerJsonTree || null,
+      payload: parsed.payloadJsonTree || null
+    };
+
+
+  /* ============================================================
+   * 5. ANÁLISIS SEMÁNTICO → SOLO SI NO HAY ERRORES
+   * ============================================================ */
   const semantic = semanticAnalysis(parsed, syntactic.isValid, secret);
 
+  /* ============================================================
+   * 6. RESPUESTA FINAL
+   * ============================================================ */
   return res.json({
     lexical,
     syntactic,
