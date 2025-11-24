@@ -153,6 +153,7 @@ export const fullAnalysis = async (req, res) => {
    * ============================================================ */
   const syntactic = runSyntacticParserFromLexical(lexical);
 
+/*
   // Si existen errores léxicos → el parser es inválido
   if (hasLexicalErrors) {
     syntactic.isValid = false;
@@ -160,15 +161,17 @@ export const fullAnalysis = async (req, res) => {
     syntactic.errors.push(
       "Existen errores léxicos: segmentos vacíos o Base64URL inválido."
     );
-  }
+  }*/
 
   /* ============================================================
-   * 4. Adjuntar árboles JSON formales del nuevo parser JSON
+   * 4. Adjuntar árboles JSON desde parseJwt SOLO si es válido
    * ============================================================ */
-  syntactic.jsonTrees = {
-    header: parsed.headerJsonTree,
-    payload: parsed.payloadJsonTree
-  };
+
+    syntactic.jsonTrees = {
+      header: parsed.headerJsonTree || null,
+      payload: parsed.payloadJsonTree || null
+    };
+
 
   /* ============================================================
    * 5. ANÁLISIS SEMÁNTICO → SOLO SI NO HAY ERRORES

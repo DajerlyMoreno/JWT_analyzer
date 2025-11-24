@@ -1057,25 +1057,32 @@ function setSyntacticAnalysis(syntactic) {
   const p = segments.payloadB64 || "(no payload)";
   const s = segments.signatureB64 || "(no signature)";
 
-  // Árboles JSON desde el parser formal
   let headerJsonAscii = null;
   let payloadJsonAscii = null;
 
-  if (syntactic.jsonTrees?.header) {
+  // HEADER JSON
+  if (syntactic.jsonTrees && syntactic.jsonTrees.header) {
     const lines = asciiFromJsonTree({
       label: "HEADER",
       children: [syntactic.jsonTrees.header]
     });
     headerJsonAscii = lines.join("\n");
+  } else {
+    headerJsonAscii = "❌ No se pudo generar árbol JSON: HEADER no es JSON válido o el segmento no cumple Base64URL.";
   }
 
-  if (syntactic.jsonTrees?.payload) {
+  // PAYLOAD JSON
+  if (syntactic.jsonTrees && syntactic.jsonTrees.payload) {
     const lines = asciiFromJsonTree({
       label: "PAYLOAD",
       children: [syntactic.jsonTrees.payload]
     });
     payloadJsonAscii = lines.join("\n");
+  } else {
+    payloadJsonAscii = "❌ No se pudo generar árbol JSON: PAYLOAD no es JSON válido o el segmento no cumple Base64URL.";
   }
+
+
 
   // ----- TABS para seleccionar árbol -----
   let tabsHtml   = "";
